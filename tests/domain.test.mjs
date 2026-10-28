@@ -1497,4 +1497,77 @@ const joinRes4 = computeJoinedMembers(
 );
 assert.equal(joinRes4.updatedMembers[1].name, 'Giulia', 'Whitespace custom name must fall back to user displayName');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name)');
+// 16. Tab Navigation, URL Aliases & Selection Persistence Invariants (Jakob's Law & Postel's Law)
+function normalizeTabParam(raw) {
+  if (!raw) return null;
+  const clean = String(raw).trim().toLowerCase();
+  if (clean === 'itinerary' || clean === 'itinerario' || clean === 'map' || clean === 'mappa') return 'itinerary';
+  if (clean === 'places' || clean === 'luoghi' || clean === 'preferiti') return 'places';
+  if (clean === 'expenses' || clean === 'spese' || clean === 'pareggio') return 'expenses';
+  if (clean === 'bookings' || clean === 'biglietti' || clean === 'tickets' || clean === 'prenotazioni') return 'bookings';
+  if (clean === 'checklist' || clean === 'todo') return 'checklist';
+  return null;
+}
+
+function resolveActiveTab(urlSearch, urlHash, localStorageValue) {
+  const params = new URLSearchParams(urlSearch || '');
+  const fromQuery = normalizeTabParam(params.get('tab'));
+  if (fromQuery) return fromQuery;
+
+  const cleanHash = (urlHash || '').replace(/^#/, '');
+  const fromHash = normalizeTabParam(cleanHash);
+  if (fromHash) return fromHash;
+
+  const fromStorage = normalizeTabParam(localStorageValue);
+  if (fromStorage) return fromStorage;
+
+  return 'itinerary';
+}
+
+function resolveDayIndex(urlSearch, localStorageValue, daysLength) {
+  if (daysLength <= 0) return 0;
+  const params = new URLSearchParams(urlSearch || '');
+  const dayParam = params.get('day');
+  if (dayParam) {
+    const parsed = parseInt(dayParam, 10);
+    if (!isNaN(parsed)) {
+      const candidate = parsed > 0 ? parsed - 1 : 0;
+      if (candidate >= 0 && candidate < daysLength) return candidate;
+    }
+  }
+  if (localStorageValue) {
+    const parsed = parseInt(localStorageValue, 10);
+    if (!isNaN(parsed) && parsed >= 0 && parsed < daysLength) return parsed;
+  }
+  return 0;
+}
+
+// 16a: Normalization of Italian and English aliases
+assert.equal(normalizeTabParam('bookings'), 'bookings');
+assert.equal(normalizeTabParam('biglietti'), 'bookings');
+assert.equal(normalizeTabParam('tickets'), 'bookings');
+assert.equal(normalizeTabParam('prenotazioni'), 'bookings');
+assert.equal(normalizeTabParam('spese'), 'expenses');
+assert.equal(normalizeTabParam('expenses'), 'expenses');
+assert.equal(normalizeTabParam('itinerario'), 'itinerary');
+assert.equal(normalizeTabParam('itinerary'), 'itinerary');
+assert.equal(normalizeTabParam('luoghi'), 'places');
+assert.equal(normalizeTabParam('preferiti'), 'places');
+assert.equal(normalizeTabParam('checklist'), 'checklist');
+assert.equal(normalizeTabParam('unknown_tab'), null);
+
+// 16b: URL Query priority on page reload (stay on tickets view on F5)
+assert.equal(resolveActiveTab('?tab=bookings', '', 'itinerary'), 'bookings', 'URL ?tab=bookings must keep user on bookings view upon page refresh');
+assert.equal(resolveActiveTab('?tab=biglietti', '', 'itinerary'), 'bookings', 'Italian alias ?tab=biglietti must resolve to bookings');
+assert.equal(resolveActiveTab('?tab=spese', '', 'itinerary'), 'expenses');
+assert.equal(resolveActiveTab('', '#checklist', 'itinerary'), 'checklist');
+assert.equal(resolveActiveTab('', '', 'bookings'), 'bookings', 'LocalStorage must preserve last active tab when URL param is missing');
+assert.equal(resolveActiveTab('', '', null), 'itinerary', 'Fallback must be itinerary when neither URL nor storage is set');
+
+// 16c: Day index selection & persistence invariants
+assert.equal(resolveDayIndex('?day=3', null, 5), 2, 'Day 3 in 1-based URL must resolve to index 2 (0-based)');
+assert.equal(resolveDayIndex('?day=1', null, 5), 0);
+assert.equal(resolveDayIndex('?day=99', '1', 5), 1, 'Out of bounds URL day must fall back to valid stored day');
+assert.equal(resolveDayIndex('', '3', 5), 3, 'Stored day index 3 must be respected when no URL day is present');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants)');

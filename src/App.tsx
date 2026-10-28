@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LogIn, Compass, Wallet, Ticket, WifiOff, Share2, CalendarRange, Camera, Loader2, X } from 'lucide-react';
 import { TripProvider, useTrip } from './context/TripContext';
 import type { AppTab } from './types/trip';
@@ -18,16 +18,112 @@ import { InviteJoinModal } from './components/trips/InviteJoinModal';
 import { AuthGate } from './components/auth/AuthGate';
 import { compressImageToDataUrl } from './utils/imageCompression';
 
+export const TAB_STORAGE_KEY = 'tripwise_active_tab_v1';
+
+/**
+ * Postel's Law: Gracefully maps Italian and English aliases to valid AppTab keys.
+ */
+export function normalizeTabParam(raw: string | null | undefined): AppTab | null {
+  if (!raw) return null;
+  const clean = raw.trim().toLowerCase();
+  if (clean === 'itinerary' || clean === 'itinerario' || clean === 'map' || clean === 'mappa') return 'itinerary';
+  if (clean === 'places' || clean === 'luoghi' || clean === 'preferiti') return 'places';
+  if (clean === 'expenses' || clean === 'spese' || clean === 'pareggio') return 'expenses';
+  if (clean === 'bookings' || clean === 'biglietti' || clean === 'tickets' || clean === 'prenotazioni') return 'bookings';
+  if (clean === 'checklist' || clean === 'todo') return 'checklist';
+  return null;
+}
+
+/**
+ * Jakob's Law & Doherty Threshold: Restores user tab selection immediately on reload/bookmark
+ * from URL query param (?tab=bookings), URL hash, or persistent LocalStorage.
+ */
+export function getInitialActiveTab(): AppTab {
+  if (typeof window === 'undefined') return 'itinerary';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = normalizeTabParam(params.get('tab'));
+    if (fromQuery) return fromQuery;
+
+    const hash = window.location.hash.replace(/^#/, '');
+    const fromHash = normalizeTabParam(hash);
+    if (fromHash) return fromHash;
+
+    const saved = localStorage.getItem(TAB_STORAGE_KEY);
+    const fromStorage = normalizeTabParam(saved);
+    if (fromStorage) return fromStorage;
+  } catch {
+    // ignore
+  }
+  return 'itinerary';
+}
+
 const AppShell: React.FC = () => {
   const { activeTrip, tripsLoading, updateTripCoverImage, joinNotification, clearJoinNotification } = useTrip();
 
-  const [activeTab, setActiveTab] = useState<AppTab>('itinerary');
+  const [activeTab, setActiveTabState] = useState<AppTab>(getInitialActiveTab);
   const [focusDayIndex, setFocusDayIndex] = useState<number | null>(null);
   const [tripManagerOpen, setTripManagerOpen] = useState(false);
   const [tripEditOpen, setTripEditOpen] = useState(false);
   const [converterOpen, setConverterOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const handleSelectTab = useCallback((tab: AppTab) => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, tab);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') !== tab) {
+        params.set('tab', tab);
+        if (tab !== 'itinerary') {
+          params.delete('day');
+        }
+        const newQuery = params.toString();
+        const newUrl = newQuery ? `${window.location.pathname}?${newQuery}` : window.location.pathname;
+        window.history.pushState(null, '', newUrl);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Synchronize on mount and keep URL aligned (e.g. if URL didn't have ?tab=bookings yet)
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, activeTab);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') !== activeTab) {
+        params.set('tab', activeTab);
+        const newQuery = params.toString();
+        const newUrl = newQuery ? `${window.location.pathname}?${newQuery}` : window.location.pathname;
+        window.history.replaceState(null, '', newUrl);
+      }
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
+
+  // Support browser back/forward buttons (popstate) and hashchange
+  useEffect(() => {
+    const onLocationChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = normalizeTabParam(params.get('tab'));
+      const hash = window.location.hash.replace(/^#/, '');
+      const fromHash = normalizeTabParam(hash);
+      const matched = fromQuery || fromHash;
+      if (matched && matched !== activeTab) {
+        setActiveTabState(matched);
+      }
+    };
+
+    window.addEventListener('popstate', onLocationChange);
+    window.addEventListener('hashchange', onLocationChange);
+    return () => {
+      window.removeEventListener('popstate', onLocationChange);
+      window.removeEventListener('hashchange', onLocationChange);
+    };
+  }, [activeTab]);
 
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,7 +144,7 @@ const AppShell: React.FC = () => {
     <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50 dark:bg-slate-950">
       <Sidebar
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
         onOpenTripManager={() => setTripManagerOpen(true)}
         onOpenEditTrip={() => setTripEditOpen(true)}
         onOpenConverter={() => setConverterOpen(true)}
@@ -332,7 +428,7 @@ const AppShell: React.FC = () => {
               <div className={activeTab === 'itinerary' ? 'block' : 'hidden'}>
                 <ItineraryView
                   onOpenEditDates={() => setTripEditOpen(true)}
-                  onOpenPlacesRecap={() => setActiveTab('places')}
+                  onOpenPlacesRecap={() => handleSelectTab('places')}
                   focusDayIndex={focusDayIndex}
                   onFocusDayHandled={() => setFocusDayIndex(null)}
                 />
@@ -341,7 +437,7 @@ const AppShell: React.FC = () => {
                 <PlacesRecapView
                   onJumpToDay={(dayIdx) => {
                     setFocusDayIndex(dayIdx);
-                    setActiveTab('itinerary');
+                    handleSelectTab('itinerary');
                   }}
                 />
               </div>
@@ -352,7 +448,7 @@ const AppShell: React.FC = () => {
           )}
         </main>
 
-        {activeTrip && <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />}
+        {activeTrip && <BottomNav activeTab={activeTab} onSelectTab={handleSelectTab} />}
       </div>
 
       {joinNotification && (

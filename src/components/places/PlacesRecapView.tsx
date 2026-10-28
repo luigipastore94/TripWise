@@ -69,6 +69,29 @@ interface UnifiedPlaceItem {
   savedPlace?: SavedPlace;
 }
 
+const PLACES_SOURCE_STORAGE_KEY = 'tripwise_places_source_filter';
+const PLACES_CAT_STORAGE_KEY = 'tripwise_places_category_filter';
+
+function getInitialSourceFilter(): SourceFilter {
+  try {
+    const saved = localStorage.getItem(PLACES_SOURCE_STORAGE_KEY);
+    if (saved === 'all' || saved === 'itinerary' || saved === 'favorites' || saved === 'offmap') {
+      return saved as SourceFilter;
+    }
+  } catch {}
+  return 'all';
+}
+
+function getInitialCategoryFilter(): ActivityCategory | 'all' {
+  try {
+    const saved = localStorage.getItem(PLACES_CAT_STORAGE_KEY);
+    if (saved && (saved === 'all' || saved in PLACE_CATEGORY_META)) {
+      return saved as ActivityCategory | 'all';
+    }
+  } catch {}
+  return 'all';
+}
+
 export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay }) => {
   const {
     activeTrip,
@@ -83,11 +106,25 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
   const idPrefix = useId();
   const catStripRef = useRef<HTMLDivElement>(null);
 
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
-  const [categoryFilter, setCategoryFilter] = useState<ActivityCategory | 'all'>('all');
+  const [sourceFilter, setSourceFilterState] = useState<SourceFilter>(getInitialSourceFilter);
+  const [categoryFilter, setCategoryFilterState] = useState<ActivityCategory | 'all'>(getInitialCategoryFilter);
   const [query, setQuery] = useState('');
   const [showOverviewMap, setShowOverviewMap] = useState(false);
   const [selectedMapPinId, setSelectedMapPinId] = useState<string | null>(null);
+
+  const handleSelectSourceFilter = (s: SourceFilter) => {
+    setSourceFilterState(s);
+    try {
+      localStorage.setItem(PLACES_SOURCE_STORAGE_KEY, s);
+    } catch {}
+  };
+
+  const handleSelectCategoryFilter = (c: ActivityCategory | 'all') => {
+    setCategoryFilterState(c);
+    try {
+      localStorage.setItem(PLACES_CAT_STORAGE_KEY, c);
+    } catch {}
+  };
 
   // Add / Edit Favorite Place Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -603,20 +640,25 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
                 { id: 'favorites', label: `Preferiti (${counts.favorites})` },
                 { id: 'offmap', label: `Fuori Mappa (${counts.offmap})` }
               ] as Array<{ id: SourceFilter; label: string }>
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSourceFilter(tab.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
-                  sourceFilter === tab.id
-                    ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ).map((tab) => {
+              const isSourceActive = sourceFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleSelectSourceFilter(tab.id)}
+                  aria-pressed={isSourceActive}
+                  aria-selected={isSourceActive}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                    isSourceActive
+                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
           <search className="relative flex-1 min-w-[190px] max-w-sm">
@@ -665,10 +707,12 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
           >
             <button
               type="button"
-              onClick={() => setCategoryFilter('all')}
+              onClick={() => handleSelectCategoryFilter('all')}
+              aria-pressed={categoryFilter === 'all'}
+              aria-selected={categoryFilter === 'all'}
               className={`shrink-0 min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
                 categoryFilter === 'all'
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
                   : 'bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
               }`}
             >
@@ -685,7 +729,9 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
                 <button
                   key={catKey}
                   type="button"
-                  onClick={() => setCategoryFilter(active ? 'all' : catKey)}
+                  onClick={() => handleSelectCategoryFilter(active ? 'all' : catKey)}
+                  aria-pressed={active}
+                  aria-selected={active}
                   className={`shrink-0 min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 transition-all ${
                     active
                       ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
@@ -783,13 +829,10 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
               <li
                 key={item.uid}
                 onClick={() => {
-                  if (item.hasCoords && showOverviewMap) {
-                    setSelectedMapPinId(item.uid);
-                  }
+                  setSelectedMapPinId((prev) => (prev === item.uid ? null : item.uid));
                 }}
-                className={`rounded-2xl bg-white dark:bg-slate-900 p-4 border flex flex-col justify-between gap-3 transition-all ${
-                  item.hasCoords && showOverviewMap ? 'cursor-pointer' : ''
-                } ${
+                aria-selected={isSelectedPin}
+                className={`rounded-2xl bg-white dark:bg-slate-900 p-4 border flex flex-col justify-between gap-3 transition-all cursor-pointer ${
                   isSelectedPin
                     ? 'border-brand-500 ring-2 ring-brand-500/20 shadow-md'
                     : 'border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-300 dark:hover:border-slate-700'

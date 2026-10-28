@@ -133,6 +133,16 @@ export function normalizeChecklistCategory(
   return 'other';
 }
 
+const CHECKLIST_FILTER_STORAGE_KEY = 'tripwise_checklist_filter_assignee';
+
+function getInitialChecklistFilter(): string {
+  try {
+    const saved = localStorage.getItem(CHECKLIST_FILTER_STORAGE_KEY);
+    if (saved) return saved;
+  } catch {}
+  return 'all';
+}
+
 export const ChecklistView: React.FC = () => {
   const {
     activeTrip,
@@ -147,7 +157,14 @@ export const ChecklistView: React.FC = () => {
   const [newText, setNewText] = useState('');
   const [newCategory, setNewCategory] = useState<string>('luggage');
   const [newAssignee, setNewAssignee] = useState<string>('shared');
-  const [filterAssignee, setFilterAssignee] = useState<string>('all');
+  const [filterAssignee, setFilterAssigneeState] = useState<string>(getInitialChecklistFilter);
+
+  const handleSelectFilterAssignee = (val: string) => {
+    setFilterAssigneeState(val);
+    try {
+      localStorage.setItem(CHECKLIST_FILTER_STORAGE_KEY, val);
+    } catch {}
+  };
 
   // Custom Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -264,10 +281,12 @@ export const ChecklistView: React.FC = () => {
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
           <button
             type="button"
-            onClick={() => setFilterAssignee('all')}
+            onClick={() => handleSelectFilterAssignee('all')}
+            aria-pressed={filterAssignee === 'all'}
+            aria-selected={filterAssignee === 'all'}
             className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
               filterAssignee === 'all'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent'
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
                 : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
             }`}
           >
@@ -275,29 +294,36 @@ export const ChecklistView: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setFilterAssignee('shared')}
+            onClick={() => handleSelectFilterAssignee('shared')}
+            aria-pressed={filterAssignee === 'shared'}
+            aria-selected={filterAssignee === 'shared'}
             className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
               filterAssignee === 'shared'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent'
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
                 : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
             }`}
           >
             Condivisi
           </button>
-          {members.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setFilterAssignee(m.id)}
-              className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                filterAssignee === m.id
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              {m.name}
-            </button>
-          ))}
+          {members.map((m) => {
+            const isMemberActive = filterAssignee === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => handleSelectFilterAssignee(m.id)}
+                aria-pressed={isMemberActive}
+                aria-selected={isMemberActive}
+                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                  isMemberActive
+                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                {m.name}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -465,6 +491,8 @@ export const ChecklistView: React.FC = () => {
                     >
                       <button
                         type="button"
+                        role="checkbox"
+                        aria-checked={item.completed}
                         onClick={() => handleToggle(item.id, item.completed)}
                         className="flex-1 min-h-[40px] flex items-center gap-2.5 text-left min-w-0"
                       >

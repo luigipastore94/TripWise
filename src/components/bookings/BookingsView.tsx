@@ -121,12 +121,46 @@ function compressImageToDataUrl(file: File, maxDim = 720): Promise<string> {
   });
 }
 
+const BOOKINGS_FILTER_STORAGE_KEY = 'tripwise_bookings_filter';
+
+function getInitialBookingFilter(): 'all' | BookingType {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const bFilter = params.get('bfilter');
+    if (bFilter && (bFilter === 'all' || bFilter in BOOKING_TYPES)) {
+      return bFilter as 'all' | BookingType;
+    }
+    const saved = localStorage.getItem(BOOKINGS_FILTER_STORAGE_KEY);
+    if (saved && (saved === 'all' || saved in BOOKING_TYPES)) {
+      return saved as 'all' | BookingType;
+    }
+  } catch {}
+  return 'all';
+}
+
 export const BookingsView: React.FC = () => {
   const { activeTrip, upsertBooking, deleteBooking } = useTrip();
   const idPrefix = useId();
 
-  const [filterType, setFilterType] = useState<'all' | BookingType>('all');
+  const [filterType, setFilterTypeState] = useState<'all' | BookingType>(getInitialBookingFilter);
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleSelectFilterType = (t: 'all' | BookingType) => {
+    setFilterTypeState(t);
+    try {
+      localStorage.setItem(BOOKINGS_FILTER_STORAGE_KEY, t);
+      const params = new URLSearchParams(window.location.search);
+      if (t === 'all') {
+        params.delete('bfilter');
+      } else {
+        params.set('bfilter', t);
+      }
+      const newQuery = params.toString();
+      const newUrl = newQuery ? `${window.location.pathname}?${newQuery}` : window.location.pathname;
+      window.history.replaceState(null, '', newUrl);
+    } catch {}
+  };
 
   // Add / Edit modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -465,10 +499,12 @@ export const BookingsView: React.FC = () => {
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
             type="button"
-            onClick={() => setFilterType('all')}
+            onClick={() => handleSelectFilterType('all')}
+            aria-pressed={filterType === 'all'}
+            aria-selected={filterType === 'all'}
             className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
               filterType === 'all'
-                ? 'bg-brand-600 text-white border-brand-600'
+                ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
                 : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
@@ -477,14 +513,17 @@ export const BookingsView: React.FC = () => {
           {(Object.keys(BOOKING_TYPES) as BookingType[]).map((t) => {
             const meta = BOOKING_TYPES[t];
             const Icon = meta.Icon;
+            const isFilterActive = filterType === t;
             return (
               <button
                 key={t}
                 type="button"
-                onClick={() => setFilterType(t)}
+                onClick={() => handleSelectFilterType(t)}
+                aria-pressed={isFilterActive}
+                aria-selected={isFilterActive}
                 className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 transition-colors ${
-                  filterType === t
-                    ? 'bg-brand-600 text-white border-brand-600'
+                  isFilterActive
+                    ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
                     : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
                 }`}
               >
@@ -521,11 +560,18 @@ export const BookingsView: React.FC = () => {
             const TypeIcon = meta.Icon;
             const hasQr = hasBookingQr(b);
             const hasPdf = Boolean(b.pdfDataUrl || b.hasPdf || b.pdfFileName);
+            const isSelected = selectedBookingId === b.id;
 
             return (
               <article
                 key={b.id}
-                className="rounded-2xl bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between gap-3"
+                onClick={() => setSelectedBookingId((prev) => (prev === b.id ? null : b.id))}
+                aria-selected={isSelected}
+                className={`rounded-2xl bg-white dark:bg-slate-900 p-4 border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  isSelected
+                    ? 'border-brand-500 ring-2 ring-brand-500/25 shadow-md'
+                    : 'border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
               >
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">

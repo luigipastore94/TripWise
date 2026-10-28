@@ -1,4 +1,4 @@
-import React, { useState, useId, useRef, useEffect } from 'react';
+import React, { useState, useId, useRef, useEffect, useCallback } from 'react';
 import {
   Plus,
   Map as MapIcon,
@@ -59,6 +59,31 @@ interface ItineraryViewProps {
   onFocusDayHandled?: () => void;
 }
 
+function getStoredDayIndex(tripId: string, daysLength: number): number {
+  if (daysLength <= 0) return 0;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const dayParam = params.get('day');
+    if (dayParam) {
+      const parsed = parseInt(dayParam, 10);
+      if (!isNaN(parsed)) {
+        const candidate = parsed > 0 ? parsed - 1 : 0;
+        if (candidate >= 0 && candidate < daysLength) {
+          return candidate;
+        }
+      }
+    }
+    const saved = localStorage.getItem(`tripwise_selected_day_${tripId}`);
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 0 && parsed < daysLength) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return 0;
+}
+
 export const ItineraryView: React.FC<ItineraryViewProps> = ({
   onOpenEditDates,
   onOpenPlacesRecap,
@@ -77,12 +102,47 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     applyGeneratedItinerary
   } = useTrip();
 
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [selectedDayIndex, setSelectedDayIndex] = useState(() =>
+    activeTrip ? getStoredDayIndex(activeTrip.id, activeTrip.days.length) : 0
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      const saved = localStorage.getItem('tripwise_itinerary_view_mode');
+      if (saved === 'list' || saved === 'split' || saved === 'map') return saved;
+    } catch {}
+    return 'split';
+  });
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [expandDaysGrid, setExpandDaysGrid] = useState(false);
   const [addDayMenuOpen, setAddDayMenuOpen] = useState(false);
   const addDayMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleSelectDay = useCallback(
+    (idx: number) => {
+      setSelectedDayIndex(idx);
+      setSelectedActivityId(null);
+      if (!activeTrip) return;
+      try {
+        localStorage.setItem(`tripwise_selected_day_${activeTrip.id}`, String(idx));
+        const params = new URLSearchParams(window.location.search);
+        const currentTab = params.get('tab');
+        if (!currentTab || currentTab === 'itinerary') {
+          params.set('day', String(idx + 1));
+          const newQuery = params.toString();
+          const newUrl = newQuery ? `${window.location.pathname}?${newQuery}` : window.location.pathname;
+          window.history.replaceState(null, '', newUrl);
+        }
+      } catch {}
+    },
+    [activeTrip]
+  );
+
+  const handleSetViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('tripwise_itinerary_view_mode', mode);
+    } catch {}
+  };
 
   useEffect(() => {
     if (!addDayMenuOpen) return;
@@ -189,11 +249,36 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
   // Jump to requested day when navigating from Places Recap
   useEffect(() => {
     if (typeof focusDayIndex === 'number' && focusDayIndex >= 0) {
-      setSelectedDayIndex(focusDayIndex);
-      setSelectedActivityId(null);
+      handleSelectDay(focusDayIndex);
       onFocusDayHandled?.();
     }
-  }, [focusDayIndex, onFocusDayHandled]);
+  }, [focusDayIndex, onFocusDayHandled, handleSelectDay]);
+
+  // Synchronize stored day if active trip changes
+  useEffect(() => {
+    if (activeTrip) {
+      const savedDay = getStoredDayIndex(activeTrip.id, activeTrip.days.length);
+      setSelectedDayIndex(savedDay);
+    }
+  }, [activeTrip?.id]);
+
+  // Keep URL ?day= aligned with current safeDayIdx
+  useEffect(() => {
+    if (!activeTrip) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const currentTab = params.get('tab');
+      if (!currentTab || currentTab === 'itinerary') {
+        const currentDayParam = params.get('day');
+        const expected = String(safeDayIdx + 1);
+        if (currentDayParam !== expected) {
+          params.set('day', expected);
+          const newUrl = `${window.location.pathname}?${params.toString()}`;
+          window.history.replaceState(null, '', newUrl);
+        }
+      }
+    } catch {}
+  }, [activeTrip, safeDayIdx]);
 
   // Keep selected day scrolled nicely into view without clipping
   useEffect(() => {
@@ -239,8 +324,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
   const handleAddDayAtStart = () => {
     setAddDayMenuOpen(false);
     addDayAtStart();
-    setSelectedDayIndex(0);
-    setSelectedActivityId(null);
+    handleSelectDay(0);
     if (dayStripRef.current) {
       dayStripRef.current.scrollTo({ left: 0, behavior: 'smooth' });
     }
@@ -250,9 +334,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     setAddDayMenuOpen(false);
     addDay();
     if (activeTrip) {
-      setSelectedDayIndex(activeTrip.days.length);
+      handleSelectDay(activeTrip.days.length);
+    } else {
+      setSelectedActivityId(null);
     }
-    setSelectedActivityId(null);
     setTimeout(() => {
       if (dayStripRef.current) {
         dayStripRef.current.scrollTo({ left: dayStripRef.current.scrollWidth, behavior: 'smooth' });
@@ -623,14 +708,14 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
       upsertActivity(targetDayId, payload);
       const targetIdx = activeTrip.days.findIndex((d) => d.id === targetDayId);
       if (targetIdx >= 0) {
-        setSelectedDayIndex(targetIdx);
+        handleSelectDay(targetIdx);
       }
     } else {
       upsertActivity(targetDayId, payload);
       if (targetDayId !== currentDay.id) {
         const targetIdx = activeTrip.days.findIndex((d) => d.id === targetDayId);
         if (targetIdx >= 0) {
-          setSelectedDayIndex(targetIdx);
+          handleSelectDay(targetIdx);
         }
       }
     }
@@ -814,13 +899,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 <button
                   key={day.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedDayIndex(idx);
-                    setSelectedActivityId(null);
-                  }}
+                  onClick={() => handleSelectDay(idx)}
+                  aria-current={isSelected ? 'page' : undefined}
+                  aria-selected={isSelected}
                   className={`min-h-[52px] px-3 py-2 rounded-xl border text-left transition-all ${
                     isSelected
-                      ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25'
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25 ring-2 ring-brand-500/30'
                       : 'bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-brand-400'
                   }`}
                 >
@@ -902,13 +986,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                       dayButtonRefs.current[idx] = el;
                     }}
                     type="button"
-                    onClick={() => {
-                      setSelectedDayIndex(idx);
-                      setSelectedActivityId(null);
-                    }}
+                    onClick={() => handleSelectDay(idx)}
+                    aria-current={isSelected ? 'page' : undefined}
+                    aria-selected={isSelected}
                     className={`shrink-0 min-h-[52px] min-w-[96px] px-3.5 py-2 rounded-xl border text-left transition-all ${
                       isSelected
-                        ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25'
+                        ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25 ring-2 ring-brand-500/30'
                         : 'bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-brand-400'
                     }`}
                   >
@@ -1000,7 +1083,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                       type="button"
                       onClick={() => {
                         deleteDay(currentDay.id);
-                        setSelectedDayIndex(Math.max(0, safeDayIdx - 1));
+                        handleSelectDay(Math.max(0, safeDayIdx - 1));
                       }}
                       aria-label="Elimina giornata"
                       title="Elimina giornata"
@@ -1020,10 +1103,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
               >
                 <button
                   type="button"
-                  onClick={() => setViewMode('list')}
+                  onClick={() => handleSetViewMode('list')}
+                  aria-pressed={viewMode === 'list'}
                   className={`flex-1 sm:flex-initial justify-center px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
                     viewMode === 'list'
-                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
                       : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
@@ -1032,10 +1116,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode('split')}
+                  onClick={() => handleSetViewMode('split')}
+                  aria-pressed={viewMode === 'split'}
                   className={`flex-1 sm:flex-initial justify-center px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
                     viewMode === 'split'
-                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
                       : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
@@ -1045,10 +1130,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode('map')}
+                  onClick={() => handleSetViewMode('map')}
+                  aria-pressed={viewMode === 'map'}
                   className={`flex-1 sm:flex-initial justify-center px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
                     viewMode === 'map'
-                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-bold'
                       : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
@@ -1146,11 +1232,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                         <li
                           key={act.id}
                           onClick={() => {
-                            if (hasCoords) setSelectedActivityId(act.id);
+                            setSelectedActivityId((prev) => (prev === act.id ? null : act.id));
                           }}
-                          className={`rounded-2xl bg-white dark:bg-slate-900 p-4 border transition-all ${
-                            hasCoords ? 'cursor-pointer' : ''
-                          } ${
+                          aria-selected={isSelected}
+                          className={`rounded-2xl bg-white dark:bg-slate-900 p-4 border transition-all cursor-pointer ${
                             isSelected
                               ? 'border-brand-500 ring-2 ring-brand-500/20 shadow-md'
                               : 'border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-300 dark:hover:border-slate-700'
@@ -1828,7 +1913,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                     exchangeRate: parsedPlan.detectedExchangeRate,
                     defaultCenter: parsedPlan.defaultCenter
                   });
-                  setSelectedDayIndex(0);
+                  handleSelectDay(0);
                   setNaturalProgramModalOpen(false);
                 }
               }}

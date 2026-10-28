@@ -33,6 +33,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onSelectTab }) 
                 type="button"
                 onClick={() => onSelectTab(id)}
                 aria-current={active ? 'page' : undefined}
+                aria-selected={active}
                 className={`w-full h-full flex flex-col items-center justify-center gap-1 text-[11px] font-bold transition-colors ${
                   active
                     ? 'text-brand-600 dark:text-brand-400'

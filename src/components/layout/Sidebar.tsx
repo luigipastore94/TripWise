@@ -164,6 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => onSelectTab(id)}
                 aria-current={active ? 'page' : undefined}
+                aria-selected={active}
                 className={`w-full min-h-[48px] px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-3 transition-all ${
                   active
                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'

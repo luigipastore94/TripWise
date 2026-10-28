@@ -428,12 +428,20 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return [];
   });
   const [activeTripId, setActiveTripId] = useState<string>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tripParam = params.get('trip');
+      if (tripParam) return tripParam;
+    } catch {}
+
     if (cachedUserInitial?.uid) {
       const saved = localStorage.getItem(getUserActiveTripStorageKey(cachedUserInitial.uid));
       if (saved) return saved;
       const initialTrips = loadUserLocalTrips(cachedUserInitial.uid);
       return initialTrips[0]?.id || '';
     }
+    const legacySaved = localStorage.getItem('tripwise_active_trip_id');
+    if (legacySaved) return legacySaved;
     return '';
   });
 
@@ -557,8 +565,18 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const selectTrip = useCallback(
     (tripId: string) => {
       setActiveTripId(tripId);
-      if (user?.uid) {
-        localStorage.setItem(getUserActiveTripStorageKey(user.uid), tripId);
+      try {
+        localStorage.setItem('tripwise_active_trip_id', tripId);
+        if (user?.uid) {
+          localStorage.setItem(getUserActiveTripStorageKey(user.uid), tripId);
+        }
+        const params = new URLSearchParams(window.location.search);
+        params.set('trip', tripId);
+        const newQuery = params.toString();
+        const newUrl = newQuery ? `${window.location.pathname}?${newQuery}` : window.location.pathname;
+        window.history.replaceState(null, '', newUrl);
+      } catch {
+        // ignore
       }
     },
     [user?.uid]
@@ -1412,7 +1430,9 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (joinParam) {
       candidate = normalizeInviteCode(joinParam);
-      const cleanUrl = window.location.pathname;
+      params.delete('join');
+      const cleanSearch = params.toString();
+      const cleanUrl = cleanSearch ? `${window.location.pathname}?${cleanSearch}` : window.location.pathname;
       window.history.replaceState({}, '', cleanUrl);
     } else {
       try {

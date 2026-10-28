@@ -15,3 +15,7 @@
 
 ## 3. Verification Discipline
 - Before concluding any UI or logic task, execute the single-command quality gate skill (`tripwise-quality-gate`) instead of running fragmented manual commands.
+
+## 4. Mandatory Commit Discipline
+- Whenever any application code or configuration is modified—whether it is a new feature (`feat`), a bug fix (`fix`), or an improvement/chore (`chore`, `refactor`, `perf`)—committing the changes to Git is mandatory before concluding the task.
+- Follow the `tripwise-commit-discipline` skill: run the quality gate, stage atomic changes cleanly (never committing `.env` or sensitive files), and write clear Conventional Commit messages (`<type>(<scope>): <description>`).

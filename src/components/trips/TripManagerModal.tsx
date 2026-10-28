@@ -779,6 +779,8 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
                           selectTrip(t.id);
                           onClose();
                         }}
+                        aria-current={isCurrent ? 'true' : undefined}
+                        aria-selected={isCurrent}
                         className="flex items-center gap-3 text-left flex-1 min-w-0"
                       >
                         {t.coverImage ? (
