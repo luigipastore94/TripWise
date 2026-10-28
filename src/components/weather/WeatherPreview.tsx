@@ -180,7 +180,7 @@ export const WeatherPreview: React.FC<WeatherPreviewProps> = ({
         )}
 
         {showLabel && (
-          <span className="hidden sm:inline font-medium text-slate-600 dark:text-slate-300 truncate max-w-[120px]">
+          <span className="hidden sm:inline font-medium text-slate-600 dark:text-slate-300 truncate max-w-[180px] xl:max-w-none">
             {weather.condition.label}
           </span>
         )}

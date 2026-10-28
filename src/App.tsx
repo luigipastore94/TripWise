@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Compass, Wallet, QrCode, WifiOff, Share2, CalendarRange, Camera, Loader2, X } from 'lucide-react';
+import { LogIn, Compass, Wallet, Ticket, WifiOff, Share2, CalendarRange, Camera, Loader2, X } from 'lucide-react';
 import { TripProvider, useTrip } from './context/TripContext';
 import type { AppTab } from './types/trip';
 import { Sidebar } from './components/layout/Sidebar';
@@ -19,7 +19,7 @@ import { AuthGate } from './components/auth/AuthGate';
 import { compressImageToDataUrl } from './utils/imageCompression';
 
 const AppShell: React.FC = () => {
-  const { activeTrip, updateTripCoverImage, joinNotification, clearJoinNotification } = useTrip();
+  const { activeTrip, tripsLoading, updateTripCoverImage, joinNotification, clearJoinNotification } = useTrip();
 
   const [activeTab, setActiveTab] = useState<AppTab>('itinerary');
   const [focusDayIndex, setFocusDayIndex] = useState<number | null>(null);
@@ -64,8 +64,23 @@ const AppShell: React.FC = () => {
         />
 
         <main className="flex-1 w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 pt-5 pb-24 lg:pb-10">
-          {!activeTrip ? (
-            /* Universal Onboarding Screen */
+          {tripsLoading && !activeTrip ? (
+            /* Doherty Threshold: Clean loading state while syncing user trips; prevents premature onboarding flash */
+            <div className="max-w-md mx-auto py-20 text-center space-y-4 animate-in fade-in duration-200">
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-900/60 flex items-center justify-center shadow-xs">
+                <Loader2 className="w-6 h-6 animate-spin text-brand-600 dark:text-brand-400" aria-hidden="true" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100">
+                  Caricamento dei tuoi viaggi...
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Sincronizzazione in corso con il tuo account
+                </p>
+              </div>
+            </div>
+          ) : !activeTrip ? (
+            /* Universal Onboarding Screen (only when trips have truly resolved as empty) */
             <div className="max-w-3xl mx-auto space-y-6 py-2">
               <div className="rounded-3xl bg-gradient-to-br from-brand-600 via-indigo-700 to-sky-700 text-white p-6 sm:p-8 shadow-xl">
                 <span className="inline-block text-xs font-bold uppercase tracking-widest bg-white/15 px-3 py-1 rounded-full">
@@ -75,7 +90,7 @@ const AppShell: React.FC = () => {
                   Organizza qualsiasi viaggio nel mondo, insieme.
                 </h1>
                 <p className="text-sm text-indigo-100 mt-2 max-w-xl leading-relaxed">
-                  Itinerario interattivo con mappa integrata, spese multi-valuta con pareggio conti automatico, pass QR offline e checklist condivisa.
+                  Itinerario interattivo con mappa integrata, spese multi-valuta con pareggio conti automatico, biglietti PDF offline e checklist condivisa.
                 </p>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-6 text-xs font-semibold">
@@ -88,8 +103,8 @@ const AppShell: React.FC = () => {
                     <span>Split Multi-Valuta</span>
                   </div>
                   <div className="bg-white/10 rounded-xl p-2.5 flex items-center gap-2">
-                    <QrCode className="w-4 h-4 shrink-0 text-amber-200" aria-hidden="true" />
-                    <span>Pass & QR Offline</span>
+                    <Ticket className="w-4 h-4 shrink-0 text-amber-200" aria-hidden="true" />
+                    <span>Biglietti & PDF</span>
                   </div>
                   <div className="bg-white/10 rounded-xl p-2.5 flex items-center gap-2">
                     <WifiOff className="w-4 h-4 shrink-0 text-pink-200" aria-hidden="true" />
@@ -132,24 +147,56 @@ const AppShell: React.FC = () => {
                 /* Hero Banner with Cover Photo (Fluid Widescreen + Mobile Parity) */
                 <>
                   {/* Desktop Hero Banner */}
-                  <div className="hidden lg:block relative rounded-3xl overflow-hidden shadow-sm border border-slate-200/80 dark:border-slate-800/80 aspect-[21/7] max-h-56 bg-slate-100 dark:bg-slate-900">
+                  <div className="hidden lg:block relative rounded-3xl overflow-hidden shadow-sm border border-slate-200/80 dark:border-slate-800/80 min-h-[220px] lg:min-h-[250px] aspect-[21/7] max-h-72 bg-slate-100 dark:bg-slate-900 group">
                     <img
                       src={activeTrip.coverImage}
                       alt={activeTrip.title}
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/10" />
-                    <div className="absolute inset-x-0 bottom-0 p-5 lg:p-6 flex items-end justify-between gap-4 text-white">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-3xl shrink-0" aria-hidden="true">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none" />
+
+                    {/* Quick Cover Photo Controls in Top-Right Corner */}
+                    <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 flex items-center gap-2 z-10">
+                      <label
+                        htmlFor="hero-cover-photo-upload"
+                        title="Cambia foto di copertina"
+                        aria-label="Cambia foto di copertina"
+                        className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-black/55 hover:bg-black/80 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md backdrop-blur-md cursor-pointer transition-colors"
+                      >
+                        {isUploadingPhoto ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-brand-300" aria-hidden="true" />
+                        ) : (
+                          <Camera className="w-4 h-4 text-brand-300" aria-hidden="true" />
+                        )}
+                        <span>{isUploadingPhoto ? 'Ottimizzazione...' : 'Cambia foto'}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => updateTripCoverImage(undefined)}
+                        title="Rimuovi foto di copertina e ripristina icona"
+                        aria-label="Rimuovi foto di copertina"
+                        className="min-h-[38px] px-3 py-1.5 rounded-xl bg-black/55 hover:bg-red-600/90 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md backdrop-blur-md transition-colors"
+                      >
+                        <X className="w-4 h-4 text-white" aria-hidden="true" />
+                        <span>Rimuovi foto</span>
+                      </button>
+                    </div>
+
+                    {/* Bottom Content Area: Title, Metadata & Actions */}
+                    <div className="absolute inset-x-0 bottom-0 p-5 lg:p-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-white">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start sm:items-center gap-2.5">
+                          <span className="text-2xl sm:text-3xl shrink-0 mt-0.5 sm:mt-0" aria-hidden="true">
                             {activeTrip.emoji}
                           </span>
-                          <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-white drop-shadow-sm truncate">
+                          <h1
+                            className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white drop-shadow-md line-clamp-2 break-words leading-tight sm:leading-snug"
+                            title={activeTrip.title}
+                          >
                             {activeTrip.title}
                           </h1>
                         </div>
-                        <p className="text-xs lg:text-sm font-medium text-slate-200/90 mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-xs lg:text-sm font-medium text-slate-200/95 mt-1 flex flex-wrap items-center gap-2 drop-shadow-xs">
                           <span>{activeTrip.destination}</span>
                           <span>•</span>
                           <span>
@@ -161,39 +208,19 @@ const AppShell: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <label
-                          htmlFor="hero-cover-photo-upload"
-                          className="min-h-[42px] px-3.5 py-2 rounded-xl bg-white/95 hover:bg-white text-slate-900 text-xs font-bold inline-flex items-center gap-1.5 shadow-md backdrop-blur-xs cursor-pointer transition-colors"
-                        >
-                          {isUploadingPhoto ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-brand-600" aria-hidden="true" />
-                          ) : (
-                            <Camera className="w-4 h-4 text-brand-600" aria-hidden="true" />
-                          )}
-                          <span>{isUploadingPhoto ? 'Ottimizzazione...' : 'Cambia foto'}</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => updateTripCoverImage(undefined)}
-                          title="Rimuovi foto di copertina e ripristina icona"
-                          aria-label="Rimuovi foto di copertina"
-                          className="min-h-[42px] px-3.5 py-2 rounded-xl bg-black/40 hover:bg-red-600/90 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md backdrop-blur-xs transition-colors"
-                        >
-                          <X className="w-4 h-4 text-white" aria-hidden="true" />
-                          <span>Rimuovi foto</span>
-                        </button>
                         <button
                           type="button"
                           onClick={() => setTripEditOpen(true)}
-                          className="min-h-[42px] px-3.5 py-2 rounded-xl bg-black/40 hover:bg-black/60 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md backdrop-blur-xs transition-colors"
+                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-black/45 hover:bg-black/70 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md backdrop-blur-xs transition-colors"
                         >
                           <CalendarRange className="w-4 h-4 text-white" aria-hidden="true" />
-                          <span>Modifica Dettagli</span>
+                          <span className="hidden xl:inline">Modifica Dettagli</span>
+                          <span className="xl:hidden">Modifica</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setSettingsOpen(true)}
-                          className="min-h-[42px] px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md transition-colors"
+                          className="min-h-[40px] px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md transition-colors"
                         >
                           <Share2 className="w-4 h-4" aria-hidden="true" />
                           <span>Condividi</span>
@@ -203,45 +230,52 @@ const AppShell: React.FC = () => {
                   </div>
 
                   {/* Mobile Compact Hero Banner */}
-                  <div className="lg:hidden relative rounded-2xl overflow-hidden shadow-sm aspect-[21/9] bg-slate-100 dark:bg-slate-900">
+                  <div className="lg:hidden relative rounded-2xl overflow-hidden shadow-sm aspect-[21/9] min-h-[145px] sm:min-h-[165px] bg-slate-100 dark:bg-slate-900">
                     <img
                       src={activeTrip.coverImage}
                       alt={activeTrip.title}
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 p-3 flex items-end justify-between gap-2 text-white">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xl shrink-0" aria-hidden="true">{activeTrip.emoji}</span>
-                          <span className="text-sm font-extrabold text-white truncate drop-shadow-xs">{activeTrip.title}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-200 truncate mt-0.5">
-                          {activeTrip.destination} • {activeTrip.days.length}g
-                        </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/10 pointer-events-none" />
+
+                    {/* Quick Photo Controls (Top-Right) */}
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
+                      <label
+                        htmlFor="hero-cover-photo-upload"
+                        aria-label="Cambia foto del viaggio"
+                        className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-black/55 hover:bg-black/75 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1 shadow-md backdrop-blur-md cursor-pointer shrink-0"
+                      >
+                        {isUploadingPhoto ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-300" aria-hidden="true" />
+                        ) : (
+                          <Camera className="w-3.5 h-3.5 text-brand-300" aria-hidden="true" />
+                        )}
+                        <span>Cambia</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => updateTripCoverImage(undefined)}
+                        aria-label="Rimuovi foto di copertina"
+                        className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-black/55 hover:bg-red-600/90 border border-white/25 text-white text-xs font-bold inline-flex items-center gap-1 shadow-md backdrop-blur-md transition-colors shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Rimuovi</span>
+                      </button>
+                    </div>
+
+                    {/* Trip Title & Destination (Full-Width Bottom) */}
+                    <div className="absolute inset-x-0 bottom-0 p-3.5 text-white">
+                      <div className="flex items-start gap-1.5 min-w-0">
+                        <span className="text-xl shrink-0 mt-0.5" aria-hidden="true">{activeTrip.emoji}</span>
+                        <span
+                          className="text-sm sm:text-base font-extrabold text-white line-clamp-2 break-words drop-shadow-sm leading-snug"
+                          title={activeTrip.title}
+                        >
+                          {activeTrip.title}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <label
-                          htmlFor="hero-cover-photo-upload"
-                          aria-label="Cambia foto del viaggio"
-                          className="min-h-[38px] px-2.5 py-1.5 rounded-xl bg-white/95 text-slate-900 text-xs font-bold inline-flex items-center gap-1 shadow-md cursor-pointer shrink-0"
-                        >
-                          {isUploadingPhoto ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" aria-hidden="true" />
-                          ) : (
-                            <Camera className="w-3.5 h-3.5 text-brand-600" aria-hidden="true" />
-                          )}
-                          <span>Cambia</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => updateTripCoverImage(undefined)}
-                          aria-label="Rimuovi foto di copertina"
-                          className="min-h-[38px] px-2 py-1.5 rounded-xl bg-black/50 hover:bg-red-600 text-white text-xs font-bold inline-flex items-center gap-1 shadow-md backdrop-blur-xs transition-colors shrink-0"
-                        >
-                          <X className="w-3.5 h-3.5" aria-hidden="true" />
-                          <span>Rimuovi</span>
-                        </button>
+                      <div className="text-[11px] sm:text-xs text-slate-200/95 truncate mt-0.5">
+                        {activeTrip.destination} • {activeTrip.days.length} {activeTrip.days.length === 1 ? 'giorno' : 'giorni'}
                       </div>
                     </div>
                   </div>
@@ -249,10 +283,10 @@ const AppShell: React.FC = () => {
               ) : (
                 /* Desktop Contextual Top Bar without cover photo (with quick upload affordance) */
                 <div className="hidden lg:flex items-center justify-between gap-4 pb-2 border-b border-slate-200/80 dark:border-slate-800/80">
-                  <div>
-                    <h1 className="text-2xl font-black tracking-tight flex items-center gap-2.5">
-                      <span>{activeTrip.emoji}</span>
-                      <span>{activeTrip.title}</span>
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight flex items-start sm:items-center gap-2.5 line-clamp-2 break-words leading-tight sm:leading-snug">
+                      <span className="text-2xl sm:text-3xl shrink-0 mt-0.5 sm:mt-0" aria-hidden="true">{activeTrip.emoji}</span>
+                      <span title={activeTrip.title}>{activeTrip.title}</span>
                     </h1>
                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                       {activeTrip.destination} • {activeTrip.days.length}{' '}
@@ -279,7 +313,8 @@ const AppShell: React.FC = () => {
                       className="min-h-[42px] px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-brand-500 text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
                     >
                       <CalendarRange className="w-4 h-4 text-brand-500" aria-hidden="true" />
-                      <span>Modifica Date & Viaggio</span>
+                      <span className="hidden xl:inline">Modifica Date & Viaggio</span>
+                      <span className="xl:hidden">Modifica</span>
                     </button>
                     <button
                       type="button"
@@ -287,7 +322,8 @@ const AppShell: React.FC = () => {
                       className="min-h-[42px] px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors"
                     >
                       <Share2 className="w-4 h-4" aria-hidden="true" />
-                      <span>Condividi Viaggio</span>
+                      <span className="hidden xl:inline">Condividi Viaggio</span>
+                      <span className="xl:hidden">Condividi</span>
                     </button>
                   </div>
                 </div>

@@ -15,7 +15,8 @@ import {
   Camera,
   Image as ImageIcon,
   X,
-  Loader2
+  Loader2,
+  GitMerge
 } from 'lucide-react';
 import { useTrip, getLocalTodayIso, type CreateTripInput } from '../../context/TripContext';
 import type { TripData } from '../../types/trip';
@@ -542,6 +543,7 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
     selectTrip,
     deleteTrip,
     joinTripByCode,
+    mergeTripByCode,
     exportActiveTripJson,
     importTripJson
   } = useTrip();
@@ -549,10 +551,19 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
   const idPrefix = useId();
   const [tab, setTab] = useState<'list' | 'create' | 'join'>('list');
   const [joinCode, setJoinCode] = useState('');
+  const [joinDisplayName, setJoinDisplayName] = useState<string>(() => user?.displayName || '');
   const [isJoining, setIsJoining] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [tripPendingDelete, setTripPendingDelete] = useState<TripData | null>(null);
+
+  // Keep display name in sync if user changes or signs in
+  React.useEffect(() => {
+    if (user?.displayName && !joinDisplayName) {
+      setJoinDisplayName(user.displayName);
+    }
+  }, [user?.displayName, joinDisplayName]);
 
   const handleClose = () => {
     setTripPendingDelete(null);
@@ -564,7 +575,8 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
     e.preventDefault();
     setIsJoining(true);
     setFeedback(null);
-    const res = await joinTripByCode(joinCode);
+    const chosenName = joinDisplayName.trim() || user?.displayName || '';
+    const res = await joinTripByCode(joinCode, chosenName);
     setIsJoining(false);
     setFeedback({ ok: res.ok, text: res.message });
     if (res.ok) {
@@ -573,6 +585,22 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
         setFeedback(null);
         onClose();
       }, 1200);
+    }
+  };
+
+  const handleMerge = async () => {
+    if (!joinCode.trim()) return;
+    setIsMerging(true);
+    setFeedback(null);
+    const res = await mergeTripByCode(joinCode);
+    setIsMerging(false);
+    setFeedback({ ok: res.ok, text: res.message });
+    if (res.ok) {
+      setJoinCode('');
+      setTimeout(() => {
+        setFeedback(null);
+        onClose();
+      }, 1500);
     }
   };
 
@@ -765,11 +793,11 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
                             {t.emoji}
                           </span>
                         )}
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-base truncate">{t.title}</span>
+                            <span className="font-bold text-base line-clamp-2 break-words" title={t.title}>{t.title}</span>
                             {isCurrent && (
-                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-600 text-white">
+                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-600 text-white shrink-0">
                                 Attivo
                               </span>
                             )}
@@ -854,14 +882,14 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
             )}
 
             <form onSubmit={handleJoin} className="space-y-3">
-              <div>
-                <label htmlFor={`${idPrefix}-join`} className="block text-sm font-bold mb-1">
-                  Unisciti con Codice Invito o Link
-                </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                  Inserisci il codice o incolla il link ricevuto (es. <code>TW-GIAP-9X2A</code>) per accedere all'itinerario condiviso.
-                </p>
-                <div className="flex gap-2">
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor={`${idPrefix}-join`} className="block text-sm font-bold mb-1">
+                    Codice Invito o Link
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                    Inserisci il codice o incolla il link ricevuto (es. <code>TW-GIAP-9X2A</code>) per accedere all'itinerario condiviso.
+                  </p>
                   <input
                     id={`${idPrefix}-join`}
                     name="invite_code"
@@ -873,15 +901,49 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value)}
                     placeholder="TW-XXXX-XXXX oppure incolla il link..."
-                    className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 font-mono uppercase font-bold text-sm"
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 font-mono uppercase font-bold text-sm"
                   />
+                </div>
+
+                <div>
+                  <label htmlFor={`${idPrefix}-join-name`} className="block text-sm font-bold mb-1">
+                    Nome con cui gli altri ti vedranno
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                    Come vuoi apparire ai tuoi compagni di viaggio nelle spese condivise e nelle tappe.
+                  </p>
+                  <input
+                    id={`${idPrefix}-join-name`}
+                    name="join_display_name"
+                    type="text"
+                    value={joinDisplayName}
+                    onChange={(e) => setJoinDisplayName(e.target.value)}
+                    placeholder={user?.displayName || "Es. Marco, Giulia, Papà..."}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 font-semibold text-sm"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
                   <button
                     type="submit"
-                    disabled={isJoining}
-                    className="min-h-[48px] px-5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-bold text-sm shrink-0"
+                    disabled={isJoining || isMerging}
+                    className="flex-1 min-h-[48px] px-5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-bold text-sm inline-flex items-center justify-center gap-2 shadow-sm transition-colors"
                   >
-                    {isJoining ? 'Unione in corso...' : 'Unisciti'}
+                    <Users className="w-4 h-4" aria-hidden="true" />
+                    <span>{isJoining ? 'Unione in corso...' : 'Unisciti al Viaggio'}</span>
                   </button>
+                  {activeTrip && (
+                    <button
+                      type="button"
+                      onClick={handleMerge}
+                      disabled={isJoining || isMerging || !joinCode.trim()}
+                      title="Combina tutte le spese, i documenti e le tappe del codice inserito nel viaggio corrente senza perdere nulla."
+                      className="min-h-[48px] px-4 rounded-xl border border-brand-300 dark:border-brand-800 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/60 dark:hover:bg-brand-900 text-brand-700 dark:text-brand-300 font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-sm transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      <GitMerge className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>{isMerging ? 'Unione...' : 'Unisci Dati'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </form>

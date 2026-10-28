@@ -6,6 +6,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 
 ---
 
+## [1.0.1] - 2026-10-28
+
+### Risolto
+- **Idratazione Istantanea della Sessione Utente (Zero-Flicker Mobile Reload)**:
+  - Risolto il flash visivo al ricaricamento della pagina su mobile: l'app non mostra più la schermata di onboarding/benvenuto ("Crea il tuo primo viaggio") né la schermata di login durante il recupero dello stato da Firebase Auth.
+  - Implementata la persistenza sincrona del profilo utente (`tripwise_auth_user_cache_v1`) e l'inizializzazione immediata (Frame 0) di viaggi locali e viaggio attivo da `localStorage`.
+  - Attesa di `auth.authStateReady()` prima di considerare l'utente non autenticato in `subscribeToAuthChanges`, prevenendo falsi positivi durante la risoluzione delle credenziali.
+  - Aggiunto stato `tripsLoading` e scheletro di caricamento delicato per evitare salti di layout e garantire il rispetto del *Doherty Threshold* (<400ms).
+
+---
+
 ## [1.0.0] - 2026-10-28
 
 ### Aggiunto

@@ -3,7 +3,7 @@ import {
   Compass,
   Bookmark,
   Wallet,
-  QrCode,
+  Ticket,
   CheckSquare,
   ChevronDown,
   ArrowLeftRight,
@@ -11,6 +11,8 @@ import {
   Settings,
   WifiOff,
   Cloud,
+  CloudOff,
+  Loader2,
   UserCircle2
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
@@ -29,7 +31,7 @@ const NAV_ITEMS: Array<{ id: AppTab; label: string; Icon: React.FC<{ className?:
   { id: 'itinerary', label: 'Itinerario & Mappa', Icon: Compass },
   { id: 'places', label: 'Luoghi & Preferiti', Icon: Bookmark },
   { id: 'expenses', label: 'Spese & Pareggio', Icon: Wallet },
-  { id: 'bookings', label: 'Prenotazioni & QR', Icon: QrCode },
+  { id: 'bookings', label: 'Biglietti & Prenotazioni', Icon: Ticket },
   { id: 'checklist', label: 'Checklist Viaggio', Icon: CheckSquare }
 ];
 
@@ -41,7 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenConverter,
   onOpenSettings
 }) => {
-  const { activeTrip, user, isOnline, syncStatus, signInWithGoogle } = useTrip();
+  const { activeTrip, tripsLoading, user, isOnline, syncStatus, signInWithGoogle, retryCloudSync } = useTrip();
 
   const formatRange = (start?: string, end?: string) => {
     if (!start) return '';
@@ -68,20 +70,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-lg font-black tracking-tight">TripWise</span>
         </div>
         {!isOnline ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300">
             <WifiOff className="w-3 h-3" aria-hidden="true" />
             <span>Offline</span>
           </span>
-        ) : syncStatus === 'synced' || syncStatus === 'syncing' ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
-            <Cloud className="w-3 h-3" aria-hidden="true" />
-            <span>Sync</span>
+        ) : syncStatus === 'error' ? (
+          <button
+            type="button"
+            onClick={retryCloudSync}
+            title="Sincronizzazione in sospeso. Clicca per sincronizzare subito con il cloud."
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900 transition-colors"
+          >
+            <CloudOff className="w-3 h-3" aria-hidden="true" />
+            <span>Sync in sospeso</span>
+          </button>
+        ) : syncStatus === 'syncing' ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950/70 dark:text-sky-300">
+            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+            <span>Sincronizzazione...</span>
           </span>
+        ) : syncStatus === 'synced' ? (
+          <button
+            type="button"
+            onClick={retryCloudSync}
+            title="Sincronizzato in tempo reale con i tuoi compagni. Clicca per verificare."
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors"
+          >
+            <Cloud className="w-3 h-3" aria-hidden="true" />
+            <span>Sync attivo</span>
+          </button>
         ) : null}
       </div>
 
       {/* Active Trip Switcher & Date Editor */}
-      {activeTrip && (
+      {activeTrip ? (
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-2">
           <button
             type="button"
@@ -101,9 +123,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {activeTrip.emoji}
                 </span>
               )}
-              <div className="min-w-0">
-                <div className="text-sm font-extrabold truncate">{activeTrip.title}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-extrabold line-clamp-2 leading-snug break-words" title={activeTrip.title}>
+                  {activeTrip.title}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                   {activeTrip.destination} • {activeTrip.days.length}g
                 </div>
               </div>
@@ -123,7 +147,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-brand-600 dark:text-brand-400 font-bold">Modifica</span>
           </button>
         </div>
-      )}
+      ) : tripsLoading ? (
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 animate-pulse" />
+        </div>
+      ) : null}
 
       {/* Primary Desktop Navigation */}
       <nav aria-label="Menu principale desktop" className="flex-1 p-4 space-y-1.5 overflow-y-auto">

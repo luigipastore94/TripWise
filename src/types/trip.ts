@@ -99,18 +99,30 @@ export interface Booking {
   pdfDataUrl?: string;
   pdfFileName?: string;
   pdfFileSize?: number;
+  hasPdf?: boolean;
   price?: number;
   currency?: string;
   notes?: string;
   updatedAt?: number;
 }
 
-export type ChecklistCategory =
+export type StandardChecklistCategory =
   | 'documents'
   | 'electronics'
   | 'luggage'
+  | 'health'
+  | 'money'
   | 'health_money'
   | 'other';
+
+export type ChecklistCategory = StandardChecklistCategory | (string & {});
+
+export interface CustomChecklistCategory {
+  id: string;
+  label: string;
+  icon: string;
+  updatedAt?: number;
+}
 
 export interface ChecklistItem {
   id: string;
@@ -157,6 +169,7 @@ export interface TripData {
   expenses: Expense[];
   bookings: Booking[];
   checklist: ChecklistItem[];
+  customChecklistCategories?: CustomChecklistCategory[];
   updatedAt: number;
 }
 
