@@ -14,7 +14,7 @@ rules_version = '2';
 //   - title: string (required, 1..150 chars) - Trip title
 //   - destination: string (required, 1..150 chars) - Destination label
 //   - emoji: string (required, 1..16 chars) - Trip icon emoji
-//   - coverImage: string (optional, if present 0..400000 chars) - Base64 data URL or external cover image URL
+//   - coverImage: string (optional, if present 0..500000 chars) - Base64 data URL or external cover image URL
 //   - startDate: string (required, 0..20 chars) - ISO start date string
 //   - endDate: string (required, 0..20 chars) - ISO end date string
 //   - baseCurrency: string (required, 1..10 chars) - Base currency ISO code (e.g. EUR)
@@ -28,6 +28,18 @@ rules_version = '2';
 //   - expenses: list (required, size <= 1000) - Shared trip expenses
 //   - bookings: list (required, size <= 300) - Reservations and tickets
 //   - checklist: list (required, size <= 500) - Pre-departure checklist items
+//   - updatedAt: number (required, > 0 and <= 99999999999999) - Unix epoch timestamp in ms
+//
+// Subcollection: trips/{inviteCode}/attachments
+// Document ID: {attachmentId} (alphanumeric, hyphens, and underscores, matching ^[a-zA-Z0-9_-]{1,100}$, e.g. book_abc123 or book_abc123_chunk_1)
+// Fields:
+//   - bookingId: string (required, 1..80 chars) - Associated booking identifier
+//   - fileName: string (optional, if present 0..255 chars) - Original file name
+//   - fileSize: number (optional, if present int or float >= 0) - Total file size in bytes
+//   - totalChunks: integer (optional, if present 1..25) - Total chunks count for multi-part attachment
+//   - chunkIndex: integer (required, 0..24) - Zero-based chunk index
+//   - chunkData: string (required, 1..800000 chars) - Chunk binary data (Base64 encoded string)
+//   - mimeType: string (optional, if present 0..100 chars) - Attachment MIME type (e.g. application/pdf)
 //   - updatedAt: number (required, > 0 and <= 99999999999999) - Unix epoch timestamp in ms
 //
 // Collection: daily_quotas
@@ -85,6 +97,12 @@ service cloud.firestore {
              code.matches('^[A-Z0-9-]{4,40}$');
     }
 
+    // Validate attachment document ID pattern (alphanumeric, hyphens, underscores, length 1..100)
+    function isValidAttachmentDocId(attachmentId) {
+      return attachmentId is string &&
+             attachmentId.matches('^[a-zA-Z0-9_-]{1,100}$');
+    }
+
     // Validate daily quota document ID pattern (ISO date string YYYY-MM-DD)
     function isValidDailyQuotaDocId(dateId) {
       return dateId is string &&
@@ -111,6 +129,15 @@ service cloud.firestore {
       return isAuthenticated() &&
              (resource.data.memberUids is list) &&
              (request.auth.uid in resource.data.memberUids);
+    }
+
+    // Check if the authenticated caller is a member of the trip identified by inviteCode
+    function isTripMember(inviteCode) {
+      return isAuthenticated() &&
+             isValidInviteCode(inviteCode) &&
+             exists(/databases/$(database)/documents/trips/$(inviteCode)) &&
+             (get(/databases/$(database)/documents/trips/$(inviteCode)).data.memberUids is list) &&
+             (request.auth.uid in get(/databases/$(database)/documents/trips/$(inviteCode)).data.memberUids);
     }
 
     // ===============================================================
@@ -167,7 +194,7 @@ service cloud.firestore {
              isValidString(data.title, 1, 150) &&
              isValidString(data.destination, 1, 150) &&
              isValidString(data.emoji, 1, 16) &&
-             (!('coverImage' in data) || isValidString(data.coverImage, 0, 400000)) &&
+             (!('coverImage' in data) || isValidString(data.coverImage, 0, 500000)) &&
              isValidString(data.startDate, 0, 20) &&
              isValidString(data.endDate, 0, 20) &&
              isValidString(data.baseCurrency, 1, 10) &&
@@ -216,6 +243,54 @@ service cloud.firestore {
              ]);
     }
 
+    // Case C: Existing trip member voluntarily removing themselves from the shared trip
+    function isAuthorizedMemberLeave() {
+      return isExistingTripMember() &&
+             !(request.auth.uid in request.resource.data.memberUids) &&
+             resource.data.memberUids.hasAll(request.resource.data.memberUids) &&
+             resource.data.memberUids.size() == request.resource.data.memberUids.size() + 1 &&
+             request.resource.data.memberUids.size() >= 1 &&
+             (resource.data.members is list) &&
+             request.resource.data.members.size() <= resource.data.members.size() &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'memberUids',
+               'members',
+               'updatedAt'
+             ]);
+    }
+
+    // Domain Validator for /trips/{inviteCode}/attachments/{attachmentId} (Used in BOTH create and update)
+    function isValidAttachmentData(data) {
+      return hasOnlyAllowedFields(data, [
+               'bookingId',
+               'fileName',
+               'fileSize',
+               'totalChunks',
+               'chunkIndex',
+               'chunkData',
+               'mimeType',
+               'updatedAt'
+             ]) &&
+             hasRequiredFields(data, [
+               'bookingId',
+               'chunkIndex',
+               'chunkData',
+               'updatedAt'
+             ]) &&
+             isValidString(data.bookingId, 1, 80) &&
+             (!('fileName' in data) || isValidString(data.fileName, 0, 255)) &&
+             (!('fileSize' in data) || (isNumber(data.fileSize) && data.fileSize >= 0)) &&
+             (!('totalChunks' in data) || (data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 25)) &&
+             data.chunkIndex is int &&
+             data.chunkIndex >= 0 &&
+             data.chunkIndex <= 24 &&
+             isValidString(data.chunkData, 1, 800000) &&
+             (!('mimeType' in data) || isValidString(data.mimeType, 0, 100)) &&
+             isNumber(data.updatedAt) &&
+             data.updatedAt > 0 &&
+             data.updatedAt <= 99999999999999;
+    }
+
     // Domain Validator for /daily_quotas/{dateId} (Used in BOTH create and update)
     function isValidDailyQuotaData(data) {
       return data.keys().hasOnly(['count', 'updatedAt']) &&
@@ -244,15 +319,39 @@ service cloud.firestore {
                        (request.auth.uid in request.resource.data.memberUids);
 
       // Updating a trip requires authentication, immutable inviteCode, valid TripData schema,
-      // and either existing-member collaboration (Case A) or companion self-join (Case B)
+      // and either existing-member collaboration (Case A), companion self-join (Case B), or voluntary member departure (Case C)
       allow update: if isAuthenticated() &&
                        request.resource.data.inviteCode == resource.data.inviteCode &&
                        areImmutableFieldsUnchanged(['inviteCode']) &&
                        isValidTripData(request.resource.data, inviteCode) &&
-                       (isAuthorizedMemberCollaboration() || isAuthorizedCompanionJoin());
+                       (isAuthorizedMemberCollaboration() ||
+                        isAuthorizedCompanionJoin() ||
+                        isAuthorizedMemberLeave());
 
       // Only existing trip members may delete a trip document
       allow delete: if isExistingTripMember();
+
+      // =============================================================
+      // Subcollection Rules: /trips/{inviteCode}/attachments/{attachmentId}
+      // =============================================================
+
+      match /attachments/{attachmentId} {
+        // Members of the parent trip can read (get and list) booking attachments
+        allow get, list: if isTripMember(inviteCode);
+
+        // Members of the parent trip can create attachment chunks with valid schema
+        allow create: if isTripMember(inviteCode) &&
+                         isValidAttachmentDocId(attachmentId) &&
+                         isValidAttachmentData(request.resource.data);
+
+        // Members of the parent trip can update attachment chunks with valid schema
+        allow update: if isTripMember(inviteCode) &&
+                         isValidAttachmentDocId(attachmentId) &&
+                         isValidAttachmentData(request.resource.data);
+
+        // Members of the parent trip can delete attachment chunks
+        allow delete: if isTripMember(inviteCode);
+      }
     }
 
     // ===============================================================

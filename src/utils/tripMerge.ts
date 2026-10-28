@@ -6,6 +6,7 @@ import type {
   Expense,
   Booking,
   ChecklistItem,
+  CustomChecklistCategory,
   Member
 } from '../types/trip';
 
@@ -53,36 +54,57 @@ export function dataEqual(a: unknown, b: unknown): boolean {
   return deepEqual(restA, restB);
 }
 
+function preserveLocalBinaryAttachments<T>(winner: T, localItem?: T): T {
+  if (!localItem || !winner || typeof localItem !== 'object' || typeof winner !== 'object') {
+    return winner;
+  }
+  const locRec = localItem as Record<string, unknown>;
+  const winRec = { ...winner } as Record<string, unknown>;
+  if (locRec.pdfDataUrl && !winRec.pdfDataUrl) {
+    winRec.pdfDataUrl = locRec.pdfDataUrl;
+  }
+  if (locRec.qrImageDataUrl && !winRec.qrImageDataUrl) {
+    winRec.qrImageDataUrl = locRec.qrImageDataUrl;
+  }
+  if (locRec.hasPdf || winRec.hasPdf || locRec.pdfDataUrl || winRec.pdfDataUrl) {
+    winRec.hasPdf = true;
+  }
+  return winRec as T;
+}
+
 /**
  * Resolve conflict between local and remote version of the same item.
  * Cites Tesler's Law & Postel's Law: picks the version with the most recent explicit timestamp,
  * or merges complementary properties without throwing.
  */
 function resolveItemConflict<T extends IdentifiableWithTimestamp>(localItem: T, remoteItem: T): T {
+  let winner: T;
+
   if (dataEqual(localItem, remoteItem)) {
     const localTime = localItem.updatedAt || 0;
     const remoteTime = remoteItem.updatedAt || 0;
-    return remoteTime >= localTime ? remoteItem : localItem;
-  }
+    winner = remoteTime >= localTime ? remoteItem : localItem;
+  } else {
+    const localTime = localItem.updatedAt || 0;
+    const remoteTime = remoteItem.updatedAt || 0;
 
-  const localTime = localItem.updatedAt || 0;
-  const remoteTime = remoteItem.updatedAt || 0;
-
-  if (localTime > remoteTime) {
-    return localItem;
-  }
-  if (remoteTime > localTime) {
-    return remoteItem;
-  }
-
-  // If timestamps are equal or missing, prefer remote but preserve local non-empty fields if remote is empty
-  const merged: Record<string, unknown> = { ...remoteItem };
-  for (const [k, v] of Object.entries(localItem)) {
-    if (merged[k] === undefined || merged[k] === null || merged[k] === '') {
-      merged[k] = v;
+    if (localTime > remoteTime) {
+      winner = localItem;
+    } else if (remoteTime > localTime) {
+      winner = remoteItem;
+    } else {
+      // If timestamps are equal or missing, prefer remote but preserve local non-empty fields if remote is empty
+      const merged: Record<string, unknown> = { ...remoteItem };
+      for (const [k, v] of Object.entries(localItem)) {
+        if (merged[k] === undefined || merged[k] === null || merged[k] === '') {
+          merged[k] = v;
+        }
+      }
+      winner = merged as T;
     }
   }
-  return merged as T;
+
+  return preserveLocalBinaryAttachments(winner, localItem);
 }
 
 /**
@@ -164,11 +186,11 @@ export function mergeEntityLists<T extends IdentifiableWithTimestamp>(
         const remoteChanged = !dataEqual(baseItem, remoteItem);
 
         if (!localChanged && !remoteChanged) {
-          result.push(remoteItem);
+          result.push(preserveLocalBinaryAttachments(remoteItem, localItem));
         } else if (localChanged && !remoteChanged) {
           result.push(localItem);
         } else if (!localChanged && remoteChanged) {
-          result.push(remoteItem);
+          result.push(preserveLocalBinaryAttachments(remoteItem, localItem));
         } else {
           // Both changed: resolve item conflict
           result.push(resolveItemConflict(localItem, remoteItem));
@@ -405,6 +427,11 @@ export function mergeTrips(
     localTrip.savedPlaces || [],
     remoteTrip.savedPlaces || []
   );
+  const mergedCustomCategories = mergeEntityLists<CustomChecklistCategory>(
+    baseTrip?.customChecklistCategories,
+    localTrip.customChecklistCategories || [],
+    remoteTrip.customChecklistCategories || []
+  );
 
   // Check if merged result contains changes that are NOT yet in remoteTrip
   const isIdenticalToRemote =
@@ -427,7 +454,8 @@ export function mergeTrips(
     deepEqual(remoteTrip.expenses || [], mergedExpenses) &&
     deepEqual(remoteTrip.bookings || [], mergedBookings) &&
     deepEqual(remoteTrip.checklist || [], mergedChecklist) &&
-    deepEqual(remoteTrip.savedPlaces || [], mergedSavedPlaces);
+    deepEqual(remoteTrip.savedPlaces || [], mergedSavedPlaces) &&
+    deepEqual(remoteTrip.customChecklistCategories || [], mergedCustomCategories);
 
   const hasLocalChanges = !isIdenticalToRemote;
 
@@ -455,6 +483,7 @@ export function mergeTrips(
     bookings: mergedBookings,
     checklist: mergedChecklist,
     savedPlaces: mergedSavedPlaces,
+    customChecklistCategories: mergedCustomCategories,
     updatedAt: mergedUpdatedAt
   };
 
