@@ -49,8 +49,8 @@ export const DESTINATION_PRESETS: DestinationPreset[] = [
       { category: 'electronics', text: 'Powerbank carico e cavi di ricarica' },
       { category: 'electronics', text: 'eSIM internazionale o verifica piano roaming' },
       { category: 'electronics', text: 'Adattatore universale da viaggio' },
-      { category: 'health_money', text: 'Carta prepagata/multivaluta senza commissioni estero' },
-      { category: 'health_money', text: 'Kit medicinali base da viaggio' },
+      { category: 'money', text: 'Carta prepagata/multivaluta senza commissioni estero' },
+      { category: 'health', text: 'Kit medicinali base da viaggio' },
       { category: 'luggage', text: 'Controllo franchigia peso e misure bagaglio' }
     ]
   },
@@ -71,7 +71,8 @@ export const DESTINATION_PRESETS: DestinationPreset[] = [
       { category: 'electronics', text: 'Adattatore presa elettrica Tipo A (2 lamelle piatte, 100V)' },
       { category: 'electronics', text: 'Powerbank capiente (indispensabile per mappe e traduttore)' },
       { category: 'electronics', text: 'Carta IC Suica / Pasmo / Icoca su Wallet o acquisto in aeroporto' },
-      { category: 'health_money', text: 'Contanti in Yen / Carta multivaluta (Revolut/Wise) per prelievi ATM 7-Eleven' },
+      { category: 'money', text: 'Contanti in Yen / Carta multivaluta (Revolut/Wise) per prelievi ATM 7-Eleven' },
+      { category: 'health', text: 'Kit medicinali personali (verificare restrizioni sostanze in Giappone)' },
       { category: 'luggage', text: 'Scarpe comode facili da togliere/rimettere (templi e ryokan)' },
       { category: 'luggage', text: 'Sacchetti per piccoli rifiuti (pochi cestini pubblici in strada)' },
       { category: 'luggage', text: 'Piccolo asciugamano tascabile per bagni pubblici' }
@@ -121,7 +122,8 @@ export const DESTINATION_PRESETS: DestinationPreset[] = [
       { category: 'documents', text: 'Assicurazione sanitaria USA con massimale illimitato' },
       { category: 'documents', text: 'Patente + Carta di Credito intestata al guidatore (se auto a noleggio)' },
       { category: 'electronics', text: 'Adattatore presa Tipo A/B + eSIM USA' },
-      { category: 'health_money', text: 'Sblocco utilizzo geografico carte di pagamento fuori Europa' }
+      { category: 'money', text: 'Sblocco utilizzo geografico carte di pagamento fuori Europa' },
+      { category: 'health', text: 'Farmaci personali e kit primo soccorso da viaggio' }
     ]
   },
   {
@@ -138,6 +140,8 @@ export const DESTINATION_PRESETS: DestinationPreset[] = [
       { category: 'documents', text: 'Tessera Sanitaria Europea (TEAM)' },
       { category: 'documents', text: 'Carte d’imbarco scaricate offline' },
       { category: 'electronics', text: 'Powerbank e caricabatterie' },
+      { category: 'money', text: 'Carta di pagamento abilitata ai prelievi/pagamenti UE' },
+      { category: 'health', text: 'Kit medicinali base da viaggio' },
       { category: 'luggage', text: 'Liquidi nel bagaglio a mano in bustina trasparente max 100ml' }
     ]
   },
@@ -153,7 +157,8 @@ export const DESTINATION_PRESETS: DestinationPreset[] = [
     checklistItems: [
       { category: 'documents', text: 'Passaporto obbligatorio + Autorizzazione elettronica ETA UK' },
       { category: 'electronics', text: 'Adattatore presa inglese Tipo G (3 poli rettangolari)' },
-      { category: 'health_money', text: 'Carta contactless abilitata per trasporti pubblici (Tube/Bus)' }
+      { category: 'money', text: 'Carta contactless abilitata per trasporti pubblici (Tube/Bus)' },
+      { category: 'health', text: 'Kit medicinali base e farmaci personali' }
     ]
   }
 ];
