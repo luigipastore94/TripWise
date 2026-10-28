@@ -768,7 +768,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       setTrips(initialList);
-      persistTripsLocally(initialList);
+      try {
+        const key = getUserTripsStorageKey(authUser.uid);
+        const safePayload = stripHeavyAttachmentsForStorage(initialList);
+        localStorage.setItem(key, JSON.stringify(safePayload));
+      } catch (err) {
+        console.warn('LocalStorage quota limit reached:', err);
+      }
+      broadcastRef.current?.postMessage({ type: 'TRIPS_UPDATED', uid: authUser.uid });
       setTripsLoading(false);
 
       hydrateTripsWithLocalAttachments(initialList)
@@ -780,19 +787,24 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .catch(() => {});
 
       const savedActive = localStorage.getItem(getUserActiveTripStorageKey(authUser.uid));
+      let chosenTripId = '';
       if (redeemedTrip) {
-        selectTrip(redeemedTrip.id);
+        chosenTripId = redeemedTrip.id;
       } else if (savedActive && initialList.some((t) => t.id === savedActive)) {
-        selectTrip(savedActive);
+        chosenTripId = savedActive;
       } else if (initialList[0]) {
-        selectTrip(initialList[0].id);
+        chosenTripId = initialList[0].id;
+      }
+      if (chosenTripId) {
+        setActiveTripId(chosenTripId);
+        localStorage.setItem(getUserActiveTripStorageKey(authUser.uid), chosenTripId);
       }
     });
 
     return () => {
       if (unsub) unsub();
     };
-  }, [isCloudAvailable, persistTripsLocally, selectTrip]);
+  }, [isCloudAvailable, isTripTombstoned, updateLastSyncedTrip]);
 
   // Shared Daily Google Quota real-time sync across travel companions
   useEffect(() => {

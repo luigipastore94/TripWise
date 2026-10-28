@@ -656,8 +656,8 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
         </fieldset>
 
         {/* App Version & Refresh Cache */}
-        <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-          <span>TripWise v1.1 • Spostamento tappe attivo</span>
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span>TripWise v1.1</span>
           <button
             type="button"
             onClick={async () => {

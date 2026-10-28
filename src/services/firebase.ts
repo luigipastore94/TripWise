@@ -164,12 +164,16 @@ export function subscribeToAuthChanges(
   const auth = initAuthInstance();
   if (!auth) return null;
 
-  // Handle redirect sign-in resolution on mobile platforms once on startup
-  if (!redirectCheckInitiated) {
-    redirectCheckInitiated = true;
-    getRedirectResult(auth)
-      .then((res) => {
-        if (res?.user) {
+  let isCancelled = false;
+  let authUnsubscribe: Unsubscribe | null = null;
+
+  (async () => {
+    // 1. Handle redirect sign-in resolution on mobile platforms once on startup
+    if (!redirectCheckInitiated) {
+      redirectCheckInitiated = true;
+      try {
+        const res = await getRedirectResult(auth);
+        if (res?.user && !isCancelled) {
           const u = res.user;
           callback({
             uid: u.uid,
@@ -178,43 +182,49 @@ export function subscribeToAuthChanges(
             photoURL: u.photoURL
           });
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn('Redirect sign-in resolution:', err);
-      });
-  }
-
-  return onAuthStateChanged(auth, async (u) => {
-    if (u) {
-      callback({
-        uid: u.uid,
-        displayName: u.displayName || u.email?.split('@')[0] || 'Viaggiatore',
-        email: u.email,
-        photoURL: u.photoURL
-      });
-    } else {
-      // If authStateReady is supported in this Firebase environment, await persistence resolution
-      // so we never emit an untimely 'null' while IndexedDB/localStorage is still restoring.
-      if (typeof auth.authStateReady === 'function') {
-        try {
-          await auth.authStateReady();
-        } catch {
-          // ignore
-        }
       }
-      if (auth.currentUser) {
-        const cu = auth.currentUser;
+    }
+
+    // 2. Wait until Firebase Auth has completely settled its initial persistence from IndexedDB/storage.
+    // This guarantee prevents onAuthStateChanged from firing a premature 'null' during startup
+    // which previously caused a flash of the unauthenticated login screen on refresh.
+    if (typeof auth.authStateReady === 'function') {
+      try {
+        await Promise.race([
+          auth.authStateReady(),
+          new Promise((resolve) => setTimeout(resolve, 4000))
+        ]);
+      } catch (err) {
+        console.warn('authStateReady resolution warning:', err);
+      }
+    }
+
+    if (isCancelled) return;
+
+    // 3. Attach continuous auth state listener once persistence is guaranteed ready
+    authUnsubscribe = onAuthStateChanged(auth, (u) => {
+      if (isCancelled) return;
+      if (u) {
         callback({
-          uid: cu.uid,
-          displayName: cu.displayName || cu.email?.split('@')[0] || 'Viaggiatore',
-          email: cu.email,
-          photoURL: cu.photoURL
+          uid: u.uid,
+          displayName: u.displayName || u.email?.split('@')[0] || 'Viaggiatore',
+          email: u.email,
+          photoURL: u.photoURL
         });
       } else {
         callback(null);
       }
+    });
+  })();
+
+  return () => {
+    isCancelled = true;
+    if (authUnsubscribe) {
+      authUnsubscribe();
     }
-  });
+  };
 }
 
 export function normalizeInviteCode(code: string): string {

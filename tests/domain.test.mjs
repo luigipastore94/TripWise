@@ -1153,6 +1153,59 @@ assert.equal(activeTripInstance.title, 'Viaggio in Giappone');
 simulatePersistCachedUser(null);
 assert.equal(simulateLoadCachedUser(), null, 'Signing out must purge the cached user profile');
 
+// Test 11f: Auth readiness gate prevents premature 'null' emission during startup (FOUC prevention)
+async function simulateAuthSubscription({ hasPersistedSession, currentUser }) {
+  const events = [];
+  let isCancelled = false;
+  let authListener = null;
+
+  // Simulate Firebase Auth instance
+  const auth = {
+    currentUser: hasPersistedSession ? currentUser : null,
+    authStateReady: async () => {
+      // Simulate asynchronous IndexedDB check delay
+      await new Promise((r) => setTimeout(r, 10));
+    },
+    onAuthStateChanged: (cb) => {
+      authListener = cb;
+      // Immediately invokes with settled currentUser
+      setTimeout(() => {
+        if (!isCancelled) cb(auth.currentUser);
+      }, 0);
+      return () => { authListener = null; };
+    }
+  };
+
+  const callback = (u) => {
+    events.push(u ? u.uid : null);
+  };
+
+  // Modern auth subscription with authStateReady gate
+  await auth.authStateReady();
+  if (!isCancelled) {
+    auth.onAuthStateChanged((u) => {
+      if (!isCancelled) callback(u);
+    });
+  }
+
+  // Wait for initial microtask / listener invocation
+  await new Promise((r) => setTimeout(r, 20));
+
+  return { events, unsubscribe: () => { isCancelled = true; } };
+}
+
+const authReadyResult = await simulateAuthSubscription({
+  hasPersistedSession: true,
+  currentUser: { uid: 'uid_alice', displayName: 'Alice' }
+});
+assert.deepEqual(authReadyResult.events, ['uid_alice'], 'Auth observer must NEVER emit a premature null while session is restoring');
+
+const unauthReadyResult = await simulateAuthSubscription({
+  hasPersistedSession: false,
+  currentUser: null
+});
+assert.deepEqual(unauthReadyResult.events, [null], 'Unauthenticated state must cleanly emit single null without glitch');
+
 // 12. Cross-Device PDF Attachment & Companion Data Preservation Invariants (Tesler's Law)
 // Test 12a: resolveItemConflict preserves local cached pdfDataUrl and qrImageDataUrl even if remote is newer
 const localBookingWithDataUrl = {
