@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ChevronDown,
   ArrowLeftRight,
   Settings,
   WifiOff,
-  CalendarRange
+  CalendarRange,
+  Cloud,
+  CloudOff,
+  Loader2
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
 
@@ -24,7 +27,14 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenConverter,
   onOpenSettings
 }) => {
-  const { activeTrip, user, isOnline } = useTrip();
+  const { activeTrip, tripsLoading, user, isOnline, syncStatus, retryCloudSync } = useTrip();
+  const [isRetryingSync, setIsRetryingSync] = useState(false);
+
+  const handleSyncClick = async () => {
+    setIsRetryingSync(true);
+    await retryCloudSync();
+    setIsRetryingSync(false);
+  };
 
   return (
     <header className="lg:hidden sticky top-0 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80">
@@ -57,14 +67,30 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate">
                   <span className="truncate">{activeTrip.destination}</span>
-                  {!isOnline && (
+                  {!isOnline ? (
                     <span className="inline-flex items-center gap-0.5 font-bold text-amber-600 dark:text-amber-400 shrink-0">
                       • <WifiOff className="w-3 h-3" aria-hidden="true" /> Offline
                     </span>
-                  )}
+                  ) : syncStatus === 'error' ? (
+                    <span className="inline-flex items-center gap-0.5 font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                      • Sync in sospeso
+                    </span>
+                  ) : syncStatus === 'synced' ? (
+                    <span className="inline-flex items-center gap-0.5 font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                      • Sincronizzato
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </button>
+          ) : tripsLoading ? (
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-xl bg-slate-200/80 dark:bg-slate-800/80 animate-pulse shrink-0" />
+              <div className="space-y-1.5 min-w-0">
+                <div className="h-3.5 w-28 bg-slate-200/80 dark:bg-slate-800/80 rounded animate-pulse" />
+                <div className="h-2.5 w-16 bg-slate-200/80 dark:bg-slate-800/80 rounded animate-pulse" />
+              </div>
+            </div>
           ) : (
             <div className="flex items-center gap-2.5">
               <img src="/icon.svg" alt="" width={32} height={32} className="w-8 h-8 rounded-lg" />
@@ -74,6 +100,36 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {activeTrip && user && isOnline && (
+            <button
+              type="button"
+              onClick={handleSyncClick}
+              title={
+                syncStatus === 'synced'
+                  ? 'Sincronizzato in tempo reale col compagno. Tocca per aggiornare.'
+                  : syncStatus === 'syncing' || isRetryingSync
+                  ? 'Sincronizzazione in corso...'
+                  : 'Modifiche locali in attesa di sincronizzazione. Tocca per sincronizzare ora.'
+              }
+              aria-label="Stato sincronizzazione cloud"
+              className={`min-w-[40px] min-h-[40px] rounded-xl inline-flex items-center justify-center transition-colors ${
+                syncStatus === 'error'
+                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                  : syncStatus === 'syncing' || isRetryingSync
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-900'
+              }`}
+            >
+              {syncStatus === 'syncing' || isRetryingSync ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              ) : syncStatus === 'error' ? (
+                <CloudOff className="w-4 h-4" aria-hidden="true" />
+              ) : (
+                <Cloud className="w-4 h-4" aria-hidden="true" />
+              )}
+            </button>
+          )}
+
           {activeTrip && (
             <>
               <button

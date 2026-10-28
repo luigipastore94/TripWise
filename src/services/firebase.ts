@@ -29,6 +29,7 @@ import {
 } from 'firebase/firestore';
 import type { TripData, UserProfile } from '../types/trip';
 import { MEMBER_COLORS } from '../data/presets';
+import { uploadBookingPdfAttachment, deleteBookingPdfAttachment } from './attachmentService';
 
 let firebaseApp: FirebaseApp | null = null;
 let firestoreDb: Firestore | null = null;
@@ -183,7 +184,7 @@ export function subscribeToAuthChanges(
       });
   }
 
-  return onAuthStateChanged(auth, (u) => {
+  return onAuthStateChanged(auth, async (u) => {
     if (u) {
       callback({
         uid: u.uid,
@@ -192,7 +193,26 @@ export function subscribeToAuthChanges(
         photoURL: u.photoURL
       });
     } else {
-      callback(null);
+      // If authStateReady is supported in this Firebase environment, await persistence resolution
+      // so we never emit an untimely 'null' while IndexedDB/localStorage is still restoring.
+      if (typeof auth.authStateReady === 'function') {
+        try {
+          await auth.authStateReady();
+        } catch {
+          // ignore
+        }
+      }
+      if (auth.currentUser) {
+        const cu = auth.currentUser;
+        callback({
+          uid: cu.uid,
+          displayName: cu.displayName || cu.email?.split('@')[0] || 'Viaggiatore',
+          email: cu.email,
+          photoURL: cu.photoURL
+        });
+      } else {
+        callback(null);
+      }
     }
   });
 }
@@ -223,7 +243,8 @@ export function normalizeInviteCode(code: string): string {
  */
 export async function joinCloudTrip(
   inviteCode: string,
-  user: UserProfile
+  user: UserProfile,
+  customDisplayName?: string
 ): Promise<TripData | null> {
   const db = initFirestoreInstance();
   if (!db) throw new Error('Servizio cloud non disponibile');
@@ -241,15 +262,37 @@ export async function joinCloudTrip(
   const isAlreadyMember = currentUids.includes(user.uid);
   const updatedUids = isAlreadyMember ? currentUids : [...currentUids, user.uid];
 
+  const trimmedCustom = customDisplayName?.trim();
+  const chosenName = trimmedCustom || user.displayName || 'Compagno';
+
   let updatedMembers = [...currentMembers];
-  const existingMember = updatedMembers.find(
-    (m) => m.uid === user.uid || (user.displayName && m.name === user.displayName)
-  );
-  if (!existingMember) {
+  // 1. Try to find a member already matching user.uid
+  let existingIndex = updatedMembers.findIndex((m) => m.uid === user.uid);
+
+  // 2. If not found by uid, try to match an unassigned member slot (no uid) with chosen name or user's displayName
+  if (existingIndex === -1) {
+    existingIndex = updatedMembers.findIndex(
+      (m) =>
+        !m.uid &&
+        (m.name.trim().toLowerCase() === chosenName.toLowerCase() ||
+          (user.displayName && m.name.trim().toLowerCase() === user.displayName.trim().toLowerCase()))
+    );
+  }
+
+  if (existingIndex >= 0) {
+    const prev = updatedMembers[existingIndex];
+    updatedMembers[existingIndex] = {
+      ...prev,
+      name: chosenName,
+      uid: user.uid,
+      photoURL: user.photoURL || prev.photoURL,
+      updatedAt: Date.now()
+    };
+  } else {
     const memberColor = MEMBER_COLORS[updatedMembers.length % MEMBER_COLORS.length];
     updatedMembers.push({
       id: `mem_${Date.now().toString(36)}`,
-      name: user.displayName || 'Compagno',
+      name: chosenName,
       color: memberColor,
       uid: user.uid,
       photoURL: user.photoURL || undefined,
@@ -258,7 +301,9 @@ export async function joinCloudTrip(
   }
 
   const now = Date.now();
-  if (!isAlreadyMember || updatedMembers.length !== currentMembers.length) {
+  const membersChanged = JSON.stringify(updatedMembers) !== JSON.stringify(currentMembers);
+
+  if (!isAlreadyMember || membersChanged) {
     await updateDoc(ref, {
       memberUids: updatedUids,
       members: updatedMembers,
@@ -282,23 +327,37 @@ export async function pushTripToCloud(trip: TripData): Promise<void> {
   const ref = doc(db, 'trips', code);
   let cleanPayload = JSON.parse(JSON.stringify({ ...trip, inviteCode: code })) as TripData;
 
-  // Protect against Firestore 1MB document limit when PDF tickets or heavy data are attached
-  try {
-    const jsonStr = JSON.stringify(cleanPayload);
-    if (jsonStr.length > 950_000 && cleanPayload.bookings) {
-      cleanPayload = {
-        ...cleanPayload,
-        bookings: cleanPayload.bookings.map((b) => {
-          if (b.pdfDataUrl && b.pdfDataUrl.length > 300_000) {
-            const { pdfDataUrl, ...rest } = b;
-            return rest;
-          }
-          return b;
-        })
-      };
-    }
-  } catch {
-    // Keep cleanPayload as-is if guard check fails
+  // 1. Offload heavy PDF attachments to the dedicated subcollection
+  // This guarantees the main trip document never exceeds the 1MB Firestore limit,
+  // preventing silent write rejections and guaranteeing instant sync for expenses and tickets.
+  if (cleanPayload.bookings && cleanPayload.bookings.length > 0) {
+    cleanPayload = {
+      ...cleanPayload,
+      bookings: cleanPayload.bookings.map((b) => {
+        if (b.pdfDataUrl) {
+          uploadBookingPdfAttachment(code, b.id, b.pdfDataUrl, b.pdfFileName, b.pdfFileSize).catch((err) => {
+            console.warn('Background PDF attachment upload failed:', err);
+          });
+          const { pdfDataUrl: _omitted, ...rest } = b;
+          return {
+            ...rest,
+            hasPdf: true
+          };
+        }
+        return {
+          ...b,
+          hasPdf: Boolean(b.hasPdf || b.pdfDataUrl || b.pdfFileName)
+        };
+      })
+    };
+  }
+
+  // 2. Protect against oversized coverImage strings exceeding Firestore security rule limit (400,000 chars)
+  if (cleanPayload.coverImage && cleanPayload.coverImage.length > 390_000) {
+    cleanPayload = {
+      ...cleanPayload,
+      coverImage: cleanPayload.coverImage.slice(0, 390_000)
+    };
   }
 
   const finalPayload: Record<string, unknown> = { ...cleanPayload };
@@ -396,18 +455,45 @@ export async function deleteCloudTrip(trip: TripData, user: UserProfile): Promis
   if (!code) return;
 
   const ref = doc(db, 'trips', code);
-  const remainingUids = (trip.memberUids ?? []).filter((u) => u !== user.uid);
 
+  // 1. Fetch current remote document to verify real-time membership on the server
+  let currentUids = Array.isArray(trip.memberUids) ? trip.memberUids : [];
+  let currentMembers = Array.isArray(trip.members) ? trip.members : [];
+
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      return; // Already deleted
+    }
+    const remote = snap.data() as TripData;
+    if (Array.isArray(remote.memberUids)) currentUids = remote.memberUids;
+    if (Array.isArray(remote.members)) currentMembers = remote.members;
+  } catch (err) {
+    console.warn('Could not read cloud trip before deletion, falling back to local snapshot:', err);
+  }
+
+  const remainingUids = currentUids.filter((u) => u !== user.uid);
+
+  // 2. If sole member or no other UIDs remain, permanently delete document and attachments
   if (remainingUids.length === 0) {
     try {
       await deleteDoc(ref);
     } catch (err) {
       console.warn('Failed to delete cloud trip document:', err);
     }
+
+    if (Array.isArray(trip.bookings)) {
+      for (const b of trip.bookings) {
+        if (b.id) {
+          deleteBookingPdfAttachment(code, b.id).catch(() => {});
+        }
+      }
+    }
     return;
   }
 
-  const remainingMembers = (trip.members ?? []).filter(
+  // 3. If shared with companions, disassociate this user so other companions retain the trip
+  const remainingMembers = currentMembers.filter(
     (m) => m.uid !== user.uid && m.name !== user.displayName
   );
 
