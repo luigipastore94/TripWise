@@ -14,6 +14,9 @@ const CHUNK_SIZE = 600_000; // 600KB per chunk, well within Firestore 1MB docume
 // In-memory fallback cache
 const memoryCache = new Map<string, string>();
 
+// Track which attachments have already been uploaded to Cloud Firestore to prevent redundant network transfers
+const uploadedAttachmentHashes = new Map<string, number>();
+
 /**
  * Open or create the local IndexedDB database for large attachments.
  * Completely eliminates LocalStorage quota exhaustion and absorbs storage complexity (Tesler's Law).
@@ -112,10 +115,14 @@ export function getMemoryCachedPdf(inviteCode: string, bookingId: string): strin
 }
 
 /**
- * Hydrates bookings in trips with their locally cached PDF binary attachments from IndexedDB.
+ * Hydrates bookings in trips with their locally cached PDF binary attachments from IndexedDB
+ * (and optionally auto-downloads missing companion tickets from Cloud Firestore when online).
  * Completely instantaneous (<10ms) and offline-first (Doherty Threshold).
  */
-export async function hydrateTripsWithLocalAttachments(trips: TripData[]): Promise<{
+export async function hydrateTripsWithLocalAttachments(
+  trips: TripData[],
+  options?: { fetchRemoteIfMissing?: boolean }
+): Promise<{
   hydratedTrips: TripData[];
   didChange: boolean;
 }> {
@@ -133,7 +140,19 @@ export async function hydrateTripsWithLocalAttachments(trips: TripData[]): Promi
 
     for (const b of trip.bookings) {
       if (!b.pdfDataUrl && (b.hasPdf || b.pdfFileName)) {
-        const cached = await getLocalCachedPdf(trip.inviteCode, b.id);
+        let cached = await getLocalCachedPdf(trip.inviteCode, b.id);
+        if (
+          !cached &&
+          options?.fetchRemoteIfMissing &&
+          typeof navigator !== 'undefined' &&
+          navigator.onLine
+        ) {
+          try {
+            cached = await downloadBookingPdfAttachment(trip.inviteCode, b.id);
+          } catch {
+            // Ignore background fetch error
+          }
+        }
         if (cached) {
           nextBookings.push({
             ...b,
@@ -202,8 +221,15 @@ export async function uploadBookingPdfAttachment(
   const code = normalizeInviteCode(inviteCode);
   if (!code || !bookingId || !pdfDataUrl) return;
 
-  // 1. Immediately cache locally
+  const cacheKey = getCacheKey(code, bookingId);
+
+  // 1. Immediately cache locally in RAM & IndexedDB
   await cachePdfLocally(code, bookingId, pdfDataUrl);
+
+  // Skip upload if this identical payload was already uploaded in this session
+  if (uploadedAttachmentHashes.get(cacheKey) === pdfDataUrl.length) {
+    return;
+  }
 
   // 2. Upload chunks to Cloud Firestore
   const db = initFirestoreInstance();
@@ -237,6 +263,8 @@ export async function uploadBookingPdfAttachment(
 
     await setDoc(ref, payload, { merge: true });
   }
+
+  uploadedAttachmentHashes.set(cacheKey, totalLen);
 }
 
 /**
@@ -287,6 +315,7 @@ export async function downloadBookingPdfAttachment(
 
     if (fullPdf) {
       await cachePdfLocally(code, bookingId, fullPdf);
+      uploadedAttachmentHashes.set(getCacheKey(code, bookingId), fullPdf.length);
       return fullPdf;
     }
   } catch (err) {
@@ -308,6 +337,7 @@ export async function deleteBookingPdfAttachment(
   if (!code || !bookingId) return;
 
   await removeLocalCachedPdf(code, bookingId);
+  uploadedAttachmentHashes.delete(getCacheKey(code, bookingId));
 
   const db = initFirestoreInstance();
   if (!db) return;

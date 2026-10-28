@@ -194,9 +194,16 @@ export const ChecklistView: React.FC = () => {
     };
   }
 
+  const effectiveFilterAssignee =
+    filterAssignee === 'all' ||
+    filterAssignee === 'shared' ||
+    members.some((m) => m.id === filterAssignee)
+      ? filterAssignee
+      : 'all';
+
   const filteredList = checklist.filter((item) => {
-    if (filterAssignee === 'all') return true;
-    return (item.assignedToMemberId || 'shared') === filterAssignee;
+    if (effectiveFilterAssignee === 'all') return true;
+    return (item.assignedToMemberId || 'shared') === effectiveFilterAssignee;
   });
 
   const completedCount = checklist.filter((i) => i.completed).length;
@@ -282,10 +289,10 @@ export const ChecklistView: React.FC = () => {
           <button
             type="button"
             onClick={() => handleSelectFilterAssignee('all')}
-            aria-pressed={filterAssignee === 'all'}
-            aria-selected={filterAssignee === 'all'}
+            aria-pressed={effectiveFilterAssignee === 'all'}
+            aria-selected={effectiveFilterAssignee === 'all'}
             className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-              filterAssignee === 'all'
+              effectiveFilterAssignee === 'all'
                 ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
                 : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
             }`}
@@ -295,10 +302,10 @@ export const ChecklistView: React.FC = () => {
           <button
             type="button"
             onClick={() => handleSelectFilterAssignee('shared')}
-            aria-pressed={filterAssignee === 'shared'}
-            aria-selected={filterAssignee === 'shared'}
+            aria-pressed={effectiveFilterAssignee === 'shared'}
+            aria-selected={effectiveFilterAssignee === 'shared'}
             className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-              filterAssignee === 'shared'
+              effectiveFilterAssignee === 'shared'
                 ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
                 : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
             }`}
@@ -306,7 +313,7 @@ export const ChecklistView: React.FC = () => {
             Condivisi
           </button>
           {members.map((m) => {
-            const isMemberActive = filterAssignee === m.id;
+            const isMemberActive = effectiveFilterAssignee === m.id;
             return (
               <button
                 key={m.id}

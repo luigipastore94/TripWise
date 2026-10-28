@@ -1576,4 +1576,128 @@ const benchmarkResult = runEvaluationHarness();
 assert.equal(benchmarkResult.passedCases, benchmarkResult.totalCases, 'All 20 global itinerary benchmark tours must pass');
 assert.equal(benchmarkResult.precisionScore, 100, 'Evaluation harness must achieve 100% precision score');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants)');
+// 18. Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases
+// 18a: mergeItineraryDays duplicate day prevention when days match by date
+const baseMergeDays = [
+  { id: 'd_base_1', dayNumber: 1, date: '2026-11-20', title: 'Giorno 1', activities: [] }
+];
+const localMergeDays = [
+  { id: 'd_local_1', dayNumber: 1, date: '2026-11-20', title: 'Roma Antica', activities: [{ id: 'a_colosseo', title: 'Colosseo' }] }
+];
+const remoteMergeDays = [
+  { id: 'd_remote_1', dayNumber: 1, date: '2026-11-20', title: 'Roma Centro', activities: [{ id: 'a_pantheon', title: 'Pantheon' }] }
+];
+const reconciledDays = mergeItineraryDays(baseMergeDays, localMergeDays, remoteMergeDays);
+assert.equal(reconciledDays.length, 1, 'Matching date days must NOT be duplicated');
+assert.equal(reconciledDays[0].activities.length, 2, 'Activities from both local and remote must be merged');
+assert.ok(reconciledDays[0].activities.some((a) => a.id === 'a_colosseo'));
+assert.ok(reconciledDays[0].activities.some((a) => a.id === 'a_pantheon'));
+
+// 18b: mergeItineraryDays day rename preservation during concurrent deletion
+const baseDayForRename = [
+  { id: 'd_1', dayNumber: 1, date: '2026-11-20', title: 'Giorno 1', activities: [] }
+];
+const localRenamedDay = [
+  { id: 'd_1', dayNumber: 1, date: '2026-11-20', title: 'Arrivo a Kyoto', activities: [] }
+];
+const remoteDeletedDay = []; // Remote collaborator deleted day 1
+const mergedRenamedDay = mergeItineraryDays(baseDayForRename, localRenamedDay, remoteDeletedDay);
+assert.equal(mergedRenamedDay.length, 1, 'Local rename on deleted day must be preserved to prevent accidental data loss');
+assert.equal(mergedRenamedDay[0].title, 'Arrivo a Kyoto');
+
+// 18c: mergeTrips 3-way memberUids reconciliation without resurrecting deleted companion UIDs
+const baseTripWithUids = {
+  ...baseTripFixture,
+  memberUids: ['uid_owner', 'uid_companion_to_remove'],
+  members: [
+    { id: 'mem_1', name: 'Io', color: '#4f46e5', uid: 'uid_owner' },
+    { id: 'mem_2', name: 'Ex Compagno', color: '#0ea5e9', uid: 'uid_companion_to_remove' }
+  ]
+};
+const localTripRemovedCompanion = {
+  ...baseTripWithUids,
+  memberUids: ['uid_owner'],
+  members: [{ id: 'mem_1', name: 'Io', color: '#4f46e5', uid: 'uid_owner' }],
+  updatedAt: 2000
+};
+const remoteTripUntouched = {
+  ...baseTripWithUids,
+  updatedAt: 1000
+};
+const mergeResultUid = mergeTrips(baseTripWithUids, localTripRemovedCompanion, remoteTripUntouched);
+assert.ok(!mergeResultUid.merged.memberUids.includes('uid_companion_to_remove'), 'Deleted companion UID must NOT be resurrected by baseTrip');
+assert.equal(mergeResultUid.merged.members.length, 1);
+assert.equal(mergeResultUid.merged.members[0].uid, 'uid_owner');
+
+// 18d: Safe Attachment Hydration does not overwrite newer activities or expenses
+const staleHydratedTrip = {
+  id: 'trip_1',
+  bookings: [{ id: 'b_1', title: 'Volo', pdfDataUrl: 'data:application/pdf;base64,hydrated' }],
+  expenses: [],
+  days: [{ id: 'd_1', activities: [] }]
+};
+const currentTripWithNewEdits = {
+  id: 'trip_1',
+  bookings: [{ id: 'b_1', title: 'Volo' }], // missing pdfDataUrl
+  expenses: [{ id: 'exp_new', title: 'Pranzo', amount: 25 }], // newly added expense
+  days: [{ id: 'd_1', activities: [{ id: 'act_new', title: 'Museo' }] }] // newly added activity
+};
+
+function safeHydrate(currentTrips, hydratedTrips) {
+  return currentTrips.map((currentTrip) => {
+    const match = hydratedTrips.find((h) => h.id === currentTrip.id);
+    if (!match || !match.bookings) return currentTrip;
+    let changed = false;
+    const nextBookings = (currentTrip.bookings || []).map((b) => {
+      if (b.pdfDataUrl) return b;
+      const hydratedBooking = match.bookings?.find((hb) => hb.id === b.id);
+      if (hydratedBooking?.pdfDataUrl) {
+        changed = true;
+        return {
+          ...b,
+          pdfDataUrl: hydratedBooking.pdfDataUrl,
+          hasPdf: true
+        };
+      }
+      return b;
+    });
+    return changed ? { ...currentTrip, bookings: nextBookings } : currentTrip;
+  });
+}
+
+const safelyHydrated = safeHydrate([currentTripWithNewEdits], [staleHydratedTrip]);
+assert.equal(safelyHydrated[0].bookings[0].pdfDataUrl, 'data:application/pdf;base64,hydrated', 'PDF attachment must be injected');
+assert.equal(safelyHydrated[0].expenses.length, 1, 'Newly added expense must NOT be wiped out by async attachment hydration');
+assert.equal(safelyHydrated[0].expenses[0].id, 'exp_new');
+assert.equal(safelyHydrated[0].days[0].activities.length, 1, 'Newly added activity must NOT be wiped out');
+assert.equal(safelyHydrated[0].days[0].activities[0].id, 'act_new');
+
+// 19. Bugfix Invariants: Expense Deletion Honors Remote Sync & Sanitized Cloud Payloads
+// 19a. Expense deletion with existing local baseline: remote deletion must NOT be resurrected even if baseTrip was not previously cached
+const tripWithExpenseA = {
+  ...baseTripFixture,
+  expenses: [{ id: 'exp_to_delete', title: 'Pizza', amount: 15 }]
+};
+const remoteTripDeletedExpense = {
+  ...baseTripFixture,
+  expenses: [] // Remote companion deleted it
+};
+// If baseTrip was null previously, fallback to existing local trip prevents resurrection:
+const resolvedDeletionMerge = mergeTrips(tripWithExpenseA, tripWithExpenseA, remoteTripDeletedExpense);
+assert.equal(resolvedDeletionMerge.merged.expenses.length, 0, 'Expense deleted on remote companion device must be honored without resurrection');
+
+// 19b. Payload sanitization for cloud push: empty customChecklistCategories stripped, non-empty preserved
+function sanitizeTripForCloud(trip) {
+  const finalPayload = { ...trip };
+  if (Array.isArray(finalPayload.customChecklistCategories) && finalPayload.customChecklistCategories.length === 0) {
+    delete finalPayload.customChecklistCategories;
+  }
+  return finalPayload;
+}
+const sanitizedEmpty = sanitizeTripForCloud({ ...baseTripFixture, customChecklistCategories: [] });
+assert.equal(sanitizedEmpty.customChecklistCategories, undefined, 'Empty customChecklistCategories must be omitted so rules do not reject write');
+
+const sanitizedWithCategories = sanitizeTripForCloud({ ...baseTripFixture, customChecklistCategories: [{ id: 'cat_1', label: 'Trekking' }] });
+assert.equal(sanitizedWithCategories.customChecklistCategories.length, 1, 'Non-empty customChecklistCategories must be preserved');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants)');

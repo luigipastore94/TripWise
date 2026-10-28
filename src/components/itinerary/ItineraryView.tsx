@@ -99,6 +99,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     upsertActivity,
     toggleActivityCompleted,
     deleteActivity,
+    moveActivity,
     applyGeneratedItinerary
   } = useTrip();
 
@@ -704,8 +705,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
 
     const targetDayId = actDayId || currentDay.id;
     if (editingActivity && targetDayId !== currentDay.id) {
-      deleteActivity(currentDay.id, payload.id);
-      upsertActivity(targetDayId, payload);
+      moveActivity(currentDay.id, targetDayId, payload.id, payload.time, payload);
       const targetIdx = activeTrip.days.findIndex((d) => d.id === targetDayId);
       if (targetIdx >= 0) {
         handleSelectDay(targetIdx);
@@ -1082,6 +1082,16 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        if (
+                          currentDay.activities.length > 0 &&
+                          !window.confirm(
+                            `Eliminare "${currentDay.title}" e le sue ${currentDay.activities.length} ${
+                              currentDay.activities.length === 1 ? 'tappa' : 'tappe'
+                            }?`
+                          )
+                        ) {
+                          return;
+                        }
                         deleteDay(currentDay.id);
                         handleSelectDay(Math.max(0, safeDayIdx - 1));
                       }}

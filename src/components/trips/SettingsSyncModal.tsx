@@ -226,7 +226,7 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
     const nextMembers = [
       ...activeTrip.members,
       {
-        id: `mem_${Date.now().toString(36)}`,
+        id: `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
         name: newMemberName.trim(),
         color: MEMBER_COLORS[activeTrip.members.length % MEMBER_COLORS.length]
       }
@@ -589,11 +589,22 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
                     {activeTrip.members.length > 1 && (
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          const hasExpenses = activeTrip.expenses.some(
+                            (e) => e.paidByMemberId === m.id || e.splitBetweenMemberIds.includes(m.id)
+                          );
+                          if (
+                            hasExpenses &&
+                            !window.confirm(
+                              `Attenzione: "${m.name}" ha delle spese registrate a suo nome. Rimuovendolo, le spese rimarranno registrate ma le quote potrebbero richiedere una verifica. Continuare?`
+                            )
+                          ) {
+                            return;
+                          }
                           updateTripMeta({
                             members: activeTrip.members.filter((item) => item.id !== m.id)
-                          })
-                        }
+                          });
+                        }}
                         aria-label={`Rimuovi ${m.name}`}
                         className="text-slate-400 hover:text-red-500 ml-0.5"
                       >

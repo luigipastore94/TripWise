@@ -231,55 +231,58 @@ export const BookingsView: React.FC = () => {
     }
 
     let active = true;
+    let createdUrl = '';
 
     if (pdfViewerBooking.pdfDataUrl) {
       try {
         const blob = dataUrlToBlob(pdfViewerBooking.pdfDataUrl);
         const url = URL.createObjectURL(blob);
+        createdUrl = url;
         setPdfBlobUrl(url);
         setCurrentPdfBlob(blob);
         setCurrentPdfDataUrl(pdfViewerBooking.pdfDataUrl || null);
-        return () => {
-          URL.revokeObjectURL(url);
-        };
       } catch {
         setPdfLoadError('Formato PDF non valido');
         return;
       }
+    } else {
+      // PDF dataUrl is not in memory; fetch from attachmentService (IndexedDB or Firestore subcollection)
+      setLoadingPdf(true);
+      setPdfLoadError(null);
+      downloadBookingPdfAttachment(activeTrip?.inviteCode || '', pdfViewerBooking.id)
+        .then((dataUrl) => {
+          if (!active) return;
+          if (!dataUrl) {
+            setPdfLoadError('Biglietto PDF non ancora disponibile sul dispositivo. Verifica la connessione internet.');
+            setLoadingPdf(false);
+            return;
+          }
+          try {
+            const blob = dataUrlToBlob(dataUrl);
+            const url = URL.createObjectURL(blob);
+            createdUrl = url;
+            setPdfBlobUrl(url);
+            setCurrentPdfBlob(blob);
+            setCurrentPdfDataUrl(dataUrl);
+          } catch {
+            setPdfLoadError('Errore durante la decodifica del PDF.');
+          } finally {
+            setLoadingPdf(false);
+          }
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.warn('PDF download error:', err);
+          setPdfLoadError('Impossibile scaricare il file PDF in questo momento.');
+          setLoadingPdf(false);
+        });
     }
-
-    // PDF dataUrl is not in memory; fetch from attachmentService (IndexedDB or Firestore subcollection)
-    setLoadingPdf(true);
-    setPdfLoadError(null);
-    downloadBookingPdfAttachment(activeTrip?.inviteCode || '', pdfViewerBooking.id)
-      .then((dataUrl) => {
-        if (!active) return;
-        if (!dataUrl) {
-          setPdfLoadError('Biglietto PDF non ancora disponibile sul dispositivo. Verifica la connessione internet.');
-          setLoadingPdf(false);
-          return;
-        }
-        try {
-          const blob = dataUrlToBlob(dataUrl);
-          const url = URL.createObjectURL(blob);
-          setPdfBlobUrl(url);
-          setCurrentPdfBlob(blob);
-          setCurrentPdfDataUrl(dataUrl);
-        } catch {
-          setPdfLoadError('Errore durante la decodifica del PDF.');
-        } finally {
-          setLoadingPdf(false);
-        }
-      })
-      .catch((err) => {
-        if (!active) return;
-        console.warn('PDF download error:', err);
-        setPdfLoadError('Impossibile scaricare il file PDF in questo momento.');
-        setLoadingPdf(false);
-      });
 
     return () => {
       active = false;
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
     };
   }, [activeTrip?.inviteCode, pdfViewerBooking]);
 
@@ -593,7 +596,12 @@ export const BookingsView: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteBooking(b.id)}
+                        onClick={() => {
+                          if (selectedBookingId === b.id) setSelectedBookingId(null);
+                          if (pdfViewerBooking?.id === b.id) setPdfViewerBooking(null);
+                          if (qrViewerBooking?.id === b.id) setQrViewerBooking(null);
+                          deleteBooking(b.id);
+                        }}
                         aria-label={`Elimina ${b.title}`}
                         className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                       >

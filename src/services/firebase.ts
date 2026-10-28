@@ -301,7 +301,7 @@ export async function joinCloudTrip(
   } else {
     const memberColor = MEMBER_COLORS[updatedMembers.length % MEMBER_COLORS.length];
     updatedMembers.push({
-      id: `mem_${Date.now().toString(36)}`,
+      id: `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       name: chosenName,
       color: memberColor,
       uid: user.uid,
@@ -340,13 +340,23 @@ export async function pushTripToCloud(trip: TripData): Promise<void> {
   // 1. Offload heavy PDF attachments to the dedicated subcollection
   // This guarantees the main trip document never exceeds the 1MB Firestore limit,
   // preventing silent write rejections and guaranteeing instant sync for expenses and tickets.
+  const pdfUploadQueue: Array<{
+    bookingId: string;
+    pdfDataUrl: string;
+    fileName?: string;
+    fileSize?: number;
+  }> = [];
+
   if (cleanPayload.bookings && cleanPayload.bookings.length > 0) {
     cleanPayload = {
       ...cleanPayload,
       bookings: cleanPayload.bookings.map((b) => {
         if (b.pdfDataUrl) {
-          uploadBookingPdfAttachment(code, b.id, b.pdfDataUrl, b.pdfFileName, b.pdfFileSize).catch((err) => {
-            console.warn('Background PDF attachment upload failed:', err);
+          pdfUploadQueue.push({
+            bookingId: b.id,
+            pdfDataUrl: b.pdfDataUrl,
+            fileName: b.pdfFileName,
+            fileSize: b.pdfFileSize
           });
           const { pdfDataUrl: _omitted, ...rest } = b;
           return {
@@ -375,7 +385,33 @@ export async function pushTripToCloud(trip: TripData): Promise<void> {
     finalPayload.coverImage = deleteField();
   }
 
+  // Sanitize empty customChecklistCategories so trips without custom categories remain compatible
+  if (
+    Array.isArray(finalPayload.customChecklistCategories) &&
+    finalPayload.customChecklistCategories.length === 0
+  ) {
+    delete finalPayload.customChecklistCategories;
+  }
+
+  // 3. Write parent trip document FIRST so the document exists and user UID is in memberUids
   await setDoc(ref, finalPayload, { merge: true });
+
+  // 4. Upload pending PDF attachments to subcollection with guaranteed parent existence
+  if (pdfUploadQueue.length > 0) {
+    await Promise.all(
+      pdfUploadQueue.map((item) =>
+        uploadBookingPdfAttachment(
+          code,
+          item.bookingId,
+          item.pdfDataUrl,
+          item.fileName,
+          item.fileSize
+        ).catch((err) => {
+          console.warn('Background PDF attachment upload failed:', err);
+        })
+      )
+    );
+  }
 }
 
 export async function fetchTripFromCloud(inviteCode: string): Promise<TripData | null> {

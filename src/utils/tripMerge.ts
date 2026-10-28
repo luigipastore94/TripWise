@@ -256,14 +256,19 @@ export function mergeItineraryDays(
         // Added remotely
         resultDays.push(remoteDay);
       } else {
-        // Was in base, missing in local. Check if remote modified activities
+        // Was in base, missing in local. Check if remote modified activities or title
         const baseActs = baseDay.activities || [];
         const remoteActs = remoteDay.activities || [];
-        if (!dataEqual(baseActs, remoteActs)) {
+        const activitiesChanged = !dataEqual(baseActs, remoteActs);
+        const titleChanged = remoteDay.title !== baseDay.title;
+        if (activitiesChanged || titleChanged) {
           resultDays.push(remoteDay);
         }
       }
     } else {
+      // Mark local day as processed so it is never duplicated in the second loop
+      processedDayIds.add(localDay.id);
+
       // Day present in both local and remote
       const baseActivities = baseDay?.activities || [];
       const mergedActivities = mergeEntityLists<Activity>(
@@ -284,7 +289,7 @@ export function mergeItineraryDays(
 
       resultDays.push({
         ...remoteDay,
-        id: localDay.id || remoteDay.id,
+        id: remoteDay.id || localDay.id,
         title: finalTitle,
         activities: mergedActivities
       });
@@ -302,7 +307,9 @@ export function mergeItineraryDays(
     if (!baseDay) {
       resultDays.push(localDay);
     } else {
-      if (!dataEqual(baseDay.activities, localDay.activities)) {
+      const activitiesChanged = !dataEqual(baseDay.activities, localDay.activities);
+      const titleChanged = localDay.title !== baseDay.title;
+      if (activitiesChanged || titleChanged) {
         resultDays.push(localDay);
       }
     }
@@ -392,20 +399,42 @@ export function mergeTrips(
     }
   }
 
-  // Merge memberUids (union of all collaborating Firebase UIDs)
-  const allUids = new Set<string>([
-    ...(remoteTrip.memberUids || []),
-    ...(localTrip.memberUids || []),
-    ...(baseTrip?.memberUids || [])
-  ]);
-  const mergedMemberUids = Array.from(allUids);
-
   // Merge entities
   const mergedMembers = mergeEntityLists<Member>(
     baseTrip?.members,
     localTrip.members || [],
     remoteTrip.members || []
   );
+
+  // Reconcile memberUids using 3-way set logic (prevents resurrection of deleted companion UIDs)
+  const baseUids = new Set(baseTrip?.memberUids || []);
+  const localUids = new Set(localTrip.memberUids || []);
+  const remoteUids = new Set(remoteTrip.memberUids || []);
+  const mergedUidsSet = new Set<string>();
+
+  for (const uid of remoteUids) {
+    if (!baseTrip || !baseUids.has(uid)) {
+      // Added remotely
+      mergedUidsSet.add(uid);
+    } else if (localUids.has(uid)) {
+      // Retained by both
+      mergedUidsSet.add(uid);
+    }
+  }
+
+  for (const uid of localUids) {
+    if (!baseTrip || !baseUids.has(uid)) {
+      // Added locally
+      mergedUidsSet.add(uid);
+    }
+  }
+
+  // Also include UIDs from the resolved members list
+  for (const m of mergedMembers) {
+    if (m.uid) mergedUidsSet.add(m.uid);
+  }
+
+  const mergedMemberUids = Array.from(mergedUidsSet);
   const mergedDays = mergeItineraryDays(baseTrip?.days, localTrip.days || [], remoteTrip.days || []);
   const mergedExpenses = mergeEntityLists<Expense>(
     baseTrip?.expenses,

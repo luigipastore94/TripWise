@@ -28,6 +28,7 @@ rules_version = '2';
 //   - expenses: list (required, size <= 1000) - Shared trip expenses
 //   - bookings: list (required, size <= 300) - Reservations and tickets
 //   - checklist: list (required, size <= 500) - Pre-departure checklist items
+//   - customChecklistCategories: list (optional, if present size <= 50) - Custom user-defined checklist categories
 //   - updatedAt: number (required, > 0 and <= 99999999999999) - Unix epoch timestamp in ms
 //
 // Subcollection: trips/{inviteCode}/attachments
@@ -165,6 +166,7 @@ service cloud.firestore {
                'expenses',
                'bookings',
                'checklist',
+               'customChecklistCategories',
                'updatedAt'
              ]) &&
              hasRequiredFields(data, [
@@ -213,6 +215,7 @@ service cloud.firestore {
              isValidList(data.expenses, 1000) &&
              isValidList(data.bookings, 300) &&
              isValidList(data.checklist, 500) &&
+             (!('customChecklistCategories' in data) || isValidList(data.customChecklistCategories, 50)) &&
              isNumber(data.updatedAt) &&
              data.updatedAt > 0 &&
              data.updatedAt <= 99999999999999;
@@ -350,7 +353,9 @@ service cloud.firestore {
                          isValidAttachmentData(request.resource.data);
 
         // Members of the parent trip can delete attachment chunks
-        allow delete: if isTripMember(inviteCode);
+        // (also allows cleaning up orphaned attachments if parent trip document was deleted)
+        allow delete: if isTripMember(inviteCode) ||
+                         (isAuthenticated() && !exists(/databases/$(database)/documents/trips/$(inviteCode)));
       }
     }
 

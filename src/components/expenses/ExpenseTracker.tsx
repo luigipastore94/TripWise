@@ -42,6 +42,7 @@ export const ExpenseTracker: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [rawAmount, setRawAmount] = useState('');
   const [currency, setCurrency] = useState('EUR');
@@ -336,23 +337,43 @@ export const ExpenseTracker: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col sm:flex-row items-center">
+                  <div className="flex flex-col sm:flex-row items-center gap-1">
                     <button
                       type="button"
                       onClick={() => openEditModal(exp)}
                       aria-label={`Modifica spesa ${exp.title}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl text-slate-400 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
                     >
                       <Pencil className="w-4 h-4" aria-hidden="true" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteExpense(exp.id)}
-                      aria-label={`Elimina spesa ${exp.title}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
-                    >
-                      <Trash2 className="w-4 h-4" aria-hidden="true" />
-                    </button>
+                    {confirmDeleteId === exp.id ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          deleteExpense(exp.id);
+                          setConfirmDeleteId(null);
+                        }}
+                        aria-label={`Conferma eliminazione spesa ${exp.title}`}
+                        className="min-h-[44px] px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs inline-flex items-center gap-1 shadow-sm transition-colors animate-in fade-in zoom-in-95 duration-150"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Confermi?</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmDeleteId(exp.id);
+                          setTimeout(() => {
+                            setConfirmDeleteId((prev) => (prev === exp.id ? null : prev));
+                          }, 3500);
+                        }}
+                        aria-label={`Elimina spesa ${exp.title}`}
+                        className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center justify-center transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>
@@ -523,20 +544,37 @@ export const ExpenseTracker: React.FC = () => {
             </div>
           </fieldset>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setModalOpen(false)}
-              className="min-h-[48px] px-4 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold text-sm"
-            >
-              Annulla
-            </button>
-            <button
-              type="submit"
-              className="min-h-[48px] px-6 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm"
-            >
-              Salva Spesa
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {editingExpense ? (
+              <button
+                type="button"
+                onClick={() => {
+                  deleteExpense(editingExpense.id);
+                  setModalOpen(false);
+                }}
+                className="min-h-[48px] px-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 font-bold text-sm inline-flex items-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
+                <span>Elimina Spesa</span>
+              </button>
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="min-h-[48px] px-4 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold text-sm"
+              >
+                Annulla
+              </button>
+              <button
+                type="submit"
+                className="min-h-[48px] px-6 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm shadow-sm"
+              >
+                Salva Spesa
+              </button>
+            </div>
           </div>
         </form>
       </ModalDialog>
