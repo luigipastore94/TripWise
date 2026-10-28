@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Bookmark, Wallet, QrCode, CheckSquare } from 'lucide-react';
+import { Compass, Bookmark, Wallet, Ticket, CheckSquare } from 'lucide-react';
 import type { AppTab } from '../../types/trip';
 
 interface BottomNavProps {
@@ -11,7 +11,7 @@ const ITEMS: Array<{ id: AppTab; label: string; Icon: React.FC<{ className?: str
   { id: 'itinerary', label: 'Itinerario', Icon: Compass },
   { id: 'places', label: 'Luoghi', Icon: Bookmark },
   { id: 'expenses', label: 'Spese', Icon: Wallet },
-  { id: 'bookings', label: 'Pass & QR', Icon: QrCode },
+  { id: 'bookings', label: 'Biglietti', Icon: Ticket },
   { id: 'checklist', label: 'Checklist', Icon: CheckSquare }
 ];
 
