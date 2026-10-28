@@ -19,12 +19,26 @@ import {
   ExternalLink,
   Download,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  Smartphone
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
 import type { Booking, BookingType } from '../../types/trip';
 import { ModalDialog } from '../ui/ModalDialog';
 import { buildExternalMapsUrl } from '../../services/geocoding';
+import {
+  downloadBookingPdfAttachment,
+  cachePdfLocally
+} from '../../services/attachmentService';
+import {
+  formatFileSize,
+  dataUrlToBlob,
+  hasBookingQr
+} from '../../utils/bookingUtils';
+import { openPdfWithExternalApp } from '../../services/pdfOpener';
+
+export { formatFileSize, dataUrlToBlob, hasBookingQr };
 
 const BOOKING_TYPES: Record<
   BookingType,
@@ -63,25 +77,6 @@ const BOOKING_TYPES: Record<
 };
 
 const MAX_PDF_BYTES = 2.5 * 1024 * 1024; // 2.5 MB
-
-export function formatFileSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function dataUrlToBlob(dataUrl: string): Blob {
-  const parts = dataUrl.split(';base64,');
-  const contentType = parts[0]?.replace('data:', '') || 'application/pdf';
-  const base64Data = parts[1] || '';
-  const raw = window.atob(base64Data);
-  const uInt8Array = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; ++i) {
-    uInt8Array[i] = raw.charCodeAt(i);
-  }
-  return new Blob([uInt8Array], { type: contentType });
-}
 
 function readPdfToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -154,9 +149,16 @@ export const BookingsView: React.FC = () => {
   const [qrViewerBooking, setQrViewerBooking] = useState<Booking | null>(null);
   const [generatedQrUrl, setGeneratedQrUrl] = useState<string>('');
 
-  // PDF Ticket Fullscreen Viewer
+  // PDF Ticket Fullscreen Viewer & External Opener
   const [pdfViewerBooking, setPdfViewerBooking] = useState<Booking | null>(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string>('');
+  const [currentPdfBlob, setCurrentPdfBlob] = useState<Blob | null>(null);
+  const [currentPdfDataUrl, setCurrentPdfDataUrl] = useState<string | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
+  const [openingExternal, setOpeningExternal] = useState(false);
+  const [externalOpenMsg, setExternalOpenMsg] = useState<string | null>(null);
+  const [showMobileIframe, setShowMobileIframe] = useState(false);
 
   useEffect(() => {
     if (!qrViewerBooking) {
@@ -167,7 +169,8 @@ export const BookingsView: React.FC = () => {
       setGeneratedQrUrl(qrViewerBooking.qrImageDataUrl);
       return;
     }
-    const textToEncode = qrViewerBooking.qrPayload || qrViewerBooking.confirmationCode || '';
+    // QR is NOT always present on tickets. Never generate a QR code from confirmationCode!
+    const textToEncode = qrViewerBooking.qrPayload?.trim() || '';
     if (textToEncode) {
       QRCode.toDataURL(textToEncode, {
         width: 320,
@@ -176,25 +179,108 @@ export const BookingsView: React.FC = () => {
       })
         .then(setGeneratedQrUrl)
         .catch(() => setGeneratedQrUrl(''));
+    } else {
+      setGeneratedQrUrl('');
     }
   }, [qrViewerBooking]);
 
   useEffect(() => {
-    if (!pdfViewerBooking?.pdfDataUrl) {
+    if (!pdfViewerBooking) {
       setPdfBlobUrl('');
+      setCurrentPdfBlob(null);
+      setCurrentPdfDataUrl(null);
+      setLoadingPdf(false);
+      setPdfLoadError(null);
+      setExternalOpenMsg(null);
+      setShowMobileIframe(false);
       return;
     }
-    try {
-      const blob = dataUrlToBlob(pdfViewerBooking.pdfDataUrl);
-      const url = URL.createObjectURL(blob);
-      setPdfBlobUrl(url);
-      return () => {
-        URL.revokeObjectURL(url);
-      };
-    } catch {
-      setPdfBlobUrl('');
+
+    let active = true;
+
+    if (pdfViewerBooking.pdfDataUrl) {
+      try {
+        const blob = dataUrlToBlob(pdfViewerBooking.pdfDataUrl);
+        const url = URL.createObjectURL(blob);
+        setPdfBlobUrl(url);
+        setCurrentPdfBlob(blob);
+        setCurrentPdfDataUrl(pdfViewerBooking.pdfDataUrl || null);
+        return () => {
+          URL.revokeObjectURL(url);
+        };
+      } catch {
+        setPdfLoadError('Formato PDF non valido');
+        return;
+      }
     }
-  }, [pdfViewerBooking]);
+
+    // PDF dataUrl is not in memory; fetch from attachmentService (IndexedDB or Firestore subcollection)
+    setLoadingPdf(true);
+    setPdfLoadError(null);
+    downloadBookingPdfAttachment(activeTrip?.inviteCode || '', pdfViewerBooking.id)
+      .then((dataUrl) => {
+        if (!active) return;
+        if (!dataUrl) {
+          setPdfLoadError('Biglietto PDF non ancora disponibile sul dispositivo. Verifica la connessione internet.');
+          setLoadingPdf(false);
+          return;
+        }
+        try {
+          const blob = dataUrlToBlob(dataUrl);
+          const url = URL.createObjectURL(blob);
+          setPdfBlobUrl(url);
+          setCurrentPdfBlob(blob);
+          setCurrentPdfDataUrl(dataUrl);
+        } catch {
+          setPdfLoadError('Errore durante la decodifica del PDF.');
+        } finally {
+          setLoadingPdf(false);
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.warn('PDF download error:', err);
+        setPdfLoadError('Impossibile scaricare il file PDF in questo momento.');
+        setLoadingPdf(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTrip?.inviteCode, pdfViewerBooking]);
+
+  const handleOpenExternal = async (bookingToOpen?: Booking | null) => {
+    const target = bookingToOpen || pdfViewerBooking;
+    if (!target) return;
+    setOpeningExternal(true);
+    setExternalOpenMsg(null);
+
+    try {
+      let dataUrl: string | null | undefined =
+        target.pdfDataUrl || (target.id === pdfViewerBooking?.id ? currentPdfDataUrl : null);
+      const blob = target.id === pdfViewerBooking?.id ? currentPdfBlob : null;
+
+      if (!dataUrl && !blob && activeTrip?.inviteCode) {
+        dataUrl = (await downloadBookingPdfAttachment(activeTrip.inviteCode, target.id)) || null;
+      }
+
+      const res = await openPdfWithExternalApp({
+        pdfDataUrl: dataUrl || undefined,
+        blob: blob || undefined,
+        fileName: target.pdfFileName || `${target.title}.pdf`
+      });
+
+      if (res.message) {
+        setExternalOpenMsg(res.message);
+        setTimeout(() => setExternalOpenMsg(null), 6000);
+      }
+    } catch {
+      setExternalOpenMsg('Impossibile aprire il file con un\'app esterna.');
+      setTimeout(() => setExternalOpenMsg(null), 4000);
+    } finally {
+      setOpeningExternal(false);
+    }
+  };
 
   if (!activeTrip) return null;
 
@@ -236,6 +322,14 @@ export const BookingsView: React.FC = () => {
     setFileError(null);
     setBNotes(b.notes || '');
     setModalOpen(true);
+
+    if (!b.pdfDataUrl && (b.hasPdf || b.pdfFileName) && activeTrip?.inviteCode) {
+      downloadBookingPdfAttachment(activeTrip.inviteCode, b.id)
+        .then((dataUrl) => {
+          if (dataUrl) setBPdfDataUrl(dataUrl);
+        })
+        .catch(() => {});
+    }
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -342,8 +436,13 @@ export const BookingsView: React.FC = () => {
       pdfDataUrl: bPdfDataUrl || undefined,
       pdfFileName: bPdfFileName.trim() || undefined,
       pdfFileSize: bPdfFileSize || undefined,
+      hasPdf: Boolean(bPdfDataUrl || bPdfFileName.trim()),
       notes: bNotes.trim() || undefined
     };
+
+    if (bPdfDataUrl && activeTrip?.inviteCode) {
+      cachePdfLocally(activeTrip.inviteCode, payload.id, bPdfDataUrl).catch(() => {});
+    }
 
     upsertBooking(payload);
     setModalOpen(false);
@@ -420,8 +519,8 @@ export const BookingsView: React.FC = () => {
           {filteredBookings.map((b) => {
             const meta = BOOKING_TYPES[b.type] || BOOKING_TYPES.document;
             const TypeIcon = meta.Icon;
-            const hasQr = Boolean(b.qrImageDataUrl || b.qrPayload || b.confirmationCode);
-            const hasPdf = Boolean(b.pdfDataUrl);
+            const hasQr = hasBookingQr(b);
+            const hasPdf = Boolean(b.pdfDataUrl || b.hasPdf || b.pdfFileName);
 
             return (
               <article
@@ -500,7 +599,7 @@ export const BookingsView: React.FC = () => {
                   )}
 
                   {/* Attached PDF document strip */}
-                  {b.pdfDataUrl && (
+                  {(b.pdfDataUrl || b.hasPdf || b.pdfFileName) && (
                     <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 text-xs">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="shrink-0 px-1.5 py-0.5 rounded bg-red-600 text-white font-extrabold text-[10px] uppercase tracking-wider">
@@ -515,15 +614,28 @@ export const BookingsView: React.FC = () => {
                           </span>
                         ) : null}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setPdfViewerBooking(b)}
-                        className="shrink-0 text-red-600 dark:text-red-400 font-bold hover:underline inline-flex items-center gap-1"
-                        aria-label={`Visualizza PDF ${b.title}`}
-                      >
-                        <Eye className="w-3.5 h-3.5" aria-hidden="true" />
-                        <span>Vedi</span>
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExternal(b)}
+                          className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 font-bold hover:bg-red-50 inline-flex items-center gap-1 transition-colors"
+                          aria-label={`Apri con app sul telefono per ${b.title}`}
+                          title="Apri con un'app sul telefono"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span className="hidden sm:inline">Apri con app</span>
+                          <span className="sm:hidden">App</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPdfViewerBooking(b)}
+                          className="shrink-0 text-slate-600 dark:text-slate-300 font-bold hover:underline inline-flex items-center gap-1 px-1.5 py-1"
+                          aria-label={`Visualizza dettagli PDF ${b.title}`}
+                        >
+                          <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span>Vedi</span>
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -572,7 +684,7 @@ export const BookingsView: React.FC = () => {
                         className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors"
                       >
                         <QrCode className="w-4 h-4" aria-hidden="true" />
-                        <span>Mostra Pass / QR</span>
+                        <span>Mostra QR</span>
                       </button>
                     )}
                   </div>
@@ -778,9 +890,14 @@ export const BookingsView: React.FC = () => {
 
             {/* 2. QR Code Screenshot Section */}
             <div className="space-y-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                Screenshot Codice QR o Pass Rapido (opzionale)
-              </label>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Screenshot Codice QR (opzionale)
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Molti biglietti (es. hotel, noleggi, alcuni treni/voli) non hanno un codice QR: è sufficiente il codice PNR sopra o il PDF.
+                </p>
+              </div>
 
               {bQrImage ? (
                 <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -794,7 +911,7 @@ export const BookingsView: React.FC = () => {
                     />
                     <div>
                       <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                        Screenshot Pass salvato
+                        Screenshot QR salvato
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         Pronto per la scansione ottica ai tornelli
@@ -830,10 +947,13 @@ export const BookingsView: React.FC = () => {
             </div>
 
             {/* 3. Text / URL for Vector QR generation */}
-            <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
-              <label htmlFor={`${idPrefix}-qrtext`} className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
-                Genera QR da codice o link (opzionale)
+            <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-1">
+              <label htmlFor={`${idPrefix}-qrtext`} className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Link o dati specifici per QR (opzionale)
               </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Usa questo campo solo se il tuo biglietto richiede espressamente di generare un QR da un URL o stringa specifica. Per i normali codici PNR compila il campo &quot;Codice Riferimento&quot; sopra.
+              </p>
               <input
                 id={`${idPrefix}-qrtext`}
                 name="qr_payload"
@@ -843,7 +963,7 @@ export const BookingsView: React.FC = () => {
                 spellCheck={false}
                 value={bQrPayload}
                 onChange={(e) => setBQrPayload(e.target.value)}
-                placeholder="Link voucher, codice biglietto o testo..."
+                placeholder="Link o payload specifico QR..."
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
               />
             </div>
@@ -884,7 +1004,10 @@ export const BookingsView: React.FC = () => {
       {/* High-Quality Dedicated PDF Ticket & Voucher Viewer Modal */}
       <ModalDialog
         open={Boolean(pdfViewerBooking)}
-        onClose={() => setPdfViewerBooking(null)}
+        onClose={() => {
+          setPdfViewerBooking(null);
+          setExternalOpenMsg(null);
+        }}
         title={pdfViewerBooking?.title ?? 'Biglietto PDF'}
         subtitle={
           pdfViewerBooking
@@ -896,16 +1019,64 @@ export const BookingsView: React.FC = () => {
         maxWidthClass="max-w-4xl"
       >
         {pdfViewerBooking && (
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* Feedback notification toast */}
+            {externalOpenMsg && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <span>{externalOpenMsg}</span>
+              </div>
+            )}
+
+            {/* Prominent "Apri con un'app sul telefono" Banner (Jakob's & Fitts's Law) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-red-600/10 via-brand-600/10 to-amber-500/10 border-2 border-red-200 dark:border-red-900/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Smartphone className="w-6 h-6" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <span>Apri con un'app sul telefono</span>
+                  </h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                    Scegli la tua app preferita (Google Drive, Adobe Acrobat, Archivio o Lettore PDF) per visualizzare il biglietto a schermo intero con zoom nitido.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenExternal(pdfViewerBooking)}
+                disabled={openingExternal || loadingPdf}
+                className="min-h-[48px] px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 disabled:opacity-50 text-white font-bold text-sm inline-flex items-center justify-center gap-2 shadow transition-all shrink-0 cursor-pointer"
+              >
+                {openingExternal ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    <span>Apertura in corso...</span>
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                    <span>Apri con app</span>
+                  </>
+                )}
+              </button>
+            </div>
+
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-red-600 text-white font-extrabold text-[10px] tracking-wider uppercase">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="shrink-0 px-2 py-0.5 rounded bg-red-600 text-white font-extrabold text-[10px] tracking-wider uppercase">
                   PDF
                 </span>
                 <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[200px] sm:max-w-md">
                   {pdfViewerBooking.pdfFileName || 'Biglietto.pdf'}
                 </span>
+                {pdfViewerBooking.pdfFileSize ? (
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px] shrink-0">
+                    ({formatFileSize(pdfViewerBooking.pdfFileSize)})
+                  </span>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 {pdfBlobUrl && (
@@ -916,7 +1087,7 @@ export const BookingsView: React.FC = () => {
                       className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-200 hover:text-brand-600 inline-flex items-center gap-1.5 transition-colors"
                     >
                       <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span>Schermo intero</span>
+                      <span>Nuova scheda</span>
                     </button>
                     <a
                       href={pdfBlobUrl}
@@ -932,64 +1103,195 @@ export const BookingsView: React.FC = () => {
             </div>
 
             {/* Embedded IFrame / Fallback View */}
-            {pdfBlobUrl ? (
-              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950">
-                <iframe
-                  src={pdfBlobUrl}
-                  title={pdfViewerBooking.title}
-                  className="w-full h-[62vh] min-h-[380px] bg-white"
-                />
+            {loadingPdf ? (
+              <div className="p-12 text-center space-y-3 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <Loader2 className="w-8 h-8 animate-spin text-brand-600 mx-auto" aria-hidden="true" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  Scaricamento del biglietto PDF dal cloud in corso...
+                </p>
+                <p className="text-xs text-slate-500">
+                  Il file viene memorizzato sul tuo dispositivo per essere accessibile anche offline.
+                </p>
+              </div>
+            ) : pdfLoadError ? (
+              <div className="p-8 text-center space-y-3 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200">
+                <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" aria-hidden="true" />
+                <p className="text-sm font-bold">{pdfLoadError}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pdfViewerBooking) {
+                      setPdfViewerBooking({ ...pdfViewerBooking });
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-colors"
+                >
+                  Riprova scaricamento
+                </button>
+              </div>
+            ) : pdfBlobUrl ? (
+              <div className="space-y-3">
+                {/* On Desktop: Show native iframe */}
+                <div className="hidden md:block rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950">
+                  <iframe
+                    src={pdfBlobUrl}
+                    title={pdfViewerBooking.title}
+                    className="w-full h-[60vh] min-h-[380px] bg-white"
+                  />
+                </div>
+
+                {/* On Mobile: Friendly Ticket Summary & Explanation */}
+                <div className="md:hidden p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-brand-600 uppercase tracking-wider">
+                        Biglietto pronto
+                      </span>
+                      <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                        {pdfViewerBooking.title}
+                      </h4>
+                      {pdfViewerBooking.provider && (
+                        <p className="text-xs font-semibold text-slate-500">
+                          {pdfViewerBooking.provider}
+                        </p>
+                      )}
+                    </div>
+                    {pdfViewerBooking.confirmationCode && (
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-slate-400">RIF</span>
+                        <div className="text-sm font-mono font-black text-slate-800 dark:text-slate-200">
+                          {pdfViewerBooking.confirmationCode}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    💡 I browser per smartphone non mostrano l'anteprima PDF interna. Tocca il pulsante <strong>&quot;Apri con app&quot;</strong> in alto per aprirlo con la migliore applicazione del tuo telefono (Drive, Adobe, ecc.) con zoom nitido.
+                  </p>
+
+                  {/* Optional mobile toggle for iframe */}
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowMobileIframe((prev) => !prev)}
+                      className="text-xs text-brand-600 dark:text-brand-400 font-semibold hover:underline"
+                    >
+                      {showMobileIframe ? 'Nascondi anteprima browser' : 'Mostra anteprima nel browser'}
+                    </button>
+                    {showMobileIframe && (
+                      <div className="mt-2 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white">
+                        <iframe
+                          src={pdfBlobUrl}
+                          title={pdfViewerBooking.title}
+                          className="w-full h-[50vh] min-h-[320px] bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="p-8 text-center text-slate-500">
                 Caricamento documento in corso...
               </div>
             )}
-
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
-              💡 Su smartphone tocca "Schermo intero" per ingrandire codice a barre, posto e dettagli del biglietto con lo zoom nativo.
-            </p>
           </div>
         )}
       </ModalDialog>
 
-      {/* High-Contrast Fullscreen QR Pass Viewer (forced light surface for optical scanners) */}
+      {/* High-Contrast Fullscreen Pass Viewer (Optical Scanner or Reference Card) */}
       <ModalDialog
         open={Boolean(qrViewerBooking)}
         onClose={() => setQrViewerBooking(null)}
-        title={qrViewerBooking?.title ?? 'Pass QR'}
-        subtitle="Sfondo bianco ad alto contrasto ottimizzato per lettori ottici"
+        title={hasBookingQr(qrViewerBooking) ? (qrViewerBooking?.title ?? 'Pass QR') : (qrViewerBooking?.title ?? 'Dettagli Biglietto')}
+        subtitle={
+          hasBookingQr(qrViewerBooking)
+            ? 'Sfondo bianco ad alto contrasto ottimizzato per lettori ottici'
+            : 'Riepilogo e codice di riferimento del biglietto'
+        }
         maxWidthClass="max-w-sm"
       >
         {qrViewerBooking && (
           <div className="text-center space-y-4">
-            <div
-              style={{ colorScheme: 'light' }}
-              className="rounded-2xl bg-white text-slate-900 p-5 border-2 border-slate-200 shadow-inner mx-auto flex flex-col items-center"
-            >
-              {generatedQrUrl ? (
-                <img
-                  src={generatedQrUrl}
-                  alt={`QR Code per ${qrViewerBooking.title}`}
-                  width={260}
-                  height={260}
-                  className="w-64 h-64 object-contain"
-                />
-              ) : (
-                <p className="text-sm text-slate-500 py-8">Generazione codice in corso...</p>
-              )}
+            {hasBookingQr(qrViewerBooking) ? (
+              /* Scannable Optical QR Container */
+              <div
+                style={{ colorScheme: 'light' }}
+                className="rounded-2xl bg-white text-slate-900 p-5 border-2 border-slate-200 shadow-inner mx-auto flex flex-col items-center"
+              >
+                {generatedQrUrl ? (
+                  <img
+                    src={generatedQrUrl}
+                    alt={`Codice QR per ${qrViewerBooking.title}`}
+                    width={260}
+                    height={260}
+                    className="w-64 h-64 object-contain"
+                  />
+                ) : (
+                  <p className="text-sm text-slate-500 py-8">Caricamento pass in corso...</p>
+                )}
 
-              {qrViewerBooking.confirmationCode && (
-                <div className="mt-3 pt-3 border-t border-slate-200 w-full">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">
-                    Codice Riferimento
+                {qrViewerBooking.confirmationCode && (
+                  <div className="mt-3 pt-3 border-t border-slate-200 w-full">
+                    <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">
+                      Codice Riferimento
+                    </div>
+                    <div className="text-xl font-mono font-black tracking-widest text-slate-900 mt-0.5">
+                      {qrViewerBooking.confirmationCode}
+                    </div>
                   </div>
-                  <div className="text-xl font-mono font-black tracking-widest text-slate-900 mt-0.5">
-                    {qrViewerBooking.confirmationCode}
+                )}
+              </div>
+            ) : (
+              /* Ticket Without QR Code - Clear, Informative Card (Jakob's Law) */
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700 text-left space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-brand-100 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400">
+                    <Ticket className="w-5 h-5" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                      {qrViewerBooking.title}
+                    </h4>
+                    {qrViewerBooking.provider && (
+                      <p className="text-xs text-slate-500">{qrViewerBooking.provider}</p>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
+
+                {qrViewerBooking.confirmationCode && (
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                    <div className="text-[10px] uppercase font-bold text-slate-500">
+                      Codice di Prenotazione / PNR
+                    </div>
+                    <div className="text-xl font-mono font-black text-slate-900 dark:text-slate-100 tracking-wider mt-0.5">
+                      {qrViewerBooking.confirmationCode}
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-300">
+                  ℹ️ Questo biglietto non include un codice QR. È sufficiente mostrare il codice di riferimento sopra o il documento PDF allegato.
+                </div>
+
+                {(qrViewerBooking.pdfDataUrl || qrViewerBooking.hasPdf || qrViewerBooking.pdfFileName) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const b = qrViewerBooking;
+                      setQrViewerBooking(null);
+                      setPdfViewerBooking(b);
+                    }}
+                    className="w-full min-h-[44px] px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs inline-flex items-center justify-center gap-2 shadow-sm transition-colors"
+                  >
+                    <FileText className="w-4 h-4" aria-hidden="true" />
+                    <span>Visualizza Biglietto PDF</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {qrViewerBooking.locationAddress && (
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 📍 {qrViewerBooking.locationAddress}
