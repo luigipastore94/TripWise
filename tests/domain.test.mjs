@@ -1349,4 +1349,99 @@ assert.equal(sanitized[0].bookings[0].hasPdf, true, 'hasPdf must be true so the 
 assert.equal(sanitized[0].bookings[0].pdfFileName, 'Italo_Roma_Milano.pdf', 'pdfFileName must be preserved');
 assert.equal(sanitized[0].bookings[0].pdfFileSize, 512000, 'pdfFileSize must be preserved');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield)');
+// 15. Companion Join with Custom Display Name & Slot Claiming Invariants (Jakob's & Postel's Laws)
+function computeJoinedMembers(currentMembers, currentUids, user, customDisplayName) {
+  const isAlreadyMember = currentUids.includes(user.uid);
+  const updatedUids = isAlreadyMember ? currentUids : [...currentUids, user.uid];
+
+  const trimmedCustom = customDisplayName?.trim();
+  const chosenName = trimmedCustom || user.displayName || 'Compagno';
+
+  let updatedMembers = [...currentMembers];
+  let existingIndex = updatedMembers.findIndex((m) => m.uid === user.uid);
+
+  if (existingIndex === -1) {
+    existingIndex = updatedMembers.findIndex(
+      (m) =>
+        !m.uid &&
+        (m.name.trim().toLowerCase() === chosenName.toLowerCase() ||
+          (user.displayName && m.name.trim().toLowerCase() === user.displayName.trim().toLowerCase()))
+    );
+  }
+
+  if (existingIndex >= 0) {
+    const prev = updatedMembers[existingIndex];
+    updatedMembers[existingIndex] = {
+      ...prev,
+      name: chosenName,
+      uid: user.uid,
+      photoURL: user.photoURL || prev.photoURL,
+      updatedAt: Date.now()
+    };
+  } else {
+    updatedMembers.push({
+      id: `mem_${Date.now()}`,
+      name: chosenName,
+      color: '#4f46e5',
+      uid: user.uid,
+      photoURL: user.photoURL || undefined,
+      updatedAt: Date.now()
+    });
+  }
+
+  return { updatedUids, updatedMembers };
+}
+
+// 15a: Appending new member with custom chosen name
+const initialTripMembers = [
+  { id: 'm1', name: 'Lorenzo', uid: 'uid_lorenzo', color: '#4f46e5' }
+];
+const joinRes1 = computeJoinedMembers(
+  initialTripMembers,
+  ['uid_lorenzo'],
+  { uid: 'uid_marco', displayName: 'Marco Rossi', photoURL: null },
+  'Mark'
+);
+assert.equal(joinRes1.updatedMembers.length, 2, 'New member must be added');
+assert.equal(joinRes1.updatedMembers[1].name, 'Mark', 'Display name must match custom name entered by user');
+assert.equal(joinRes1.updatedMembers[1].uid, 'uid_marco');
+assert.deepEqual(joinRes1.updatedUids, ['uid_lorenzo', 'uid_marco']);
+
+// 15b: Claiming an unassigned member placeholder slot created by trip organizer
+const tripWithPlaceholder = [
+  { id: 'm1', name: 'Lorenzo', uid: 'uid_lorenzo', color: '#4f46e5' },
+  { id: 'm2', name: 'Chiara', color: '#ec4899' } // placeholder with no uid
+];
+const joinRes2 = computeJoinedMembers(
+  tripWithPlaceholder,
+  ['uid_lorenzo'],
+  { uid: 'uid_chiara', displayName: 'Chiara B.', photoURL: 'https://photo.url' },
+  'Chiara'
+);
+assert.equal(joinRes2.updatedMembers.length, 2, 'Placeholder member slot must be claimed, not duplicated');
+assert.equal(joinRes2.updatedMembers[1].id, 'm2');
+assert.equal(joinRes2.updatedMembers[1].name, 'Chiara');
+assert.equal(joinRes2.updatedMembers[1].uid, 'uid_chiara');
+assert.equal(joinRes2.updatedMembers[1].photoURL, 'https://photo.url');
+
+// 15c: Existing member updating their display name in the trip
+const joinRes3 = computeJoinedMembers(
+  joinRes2.updatedMembers,
+  joinRes2.updatedUids,
+  { uid: 'uid_chiara', displayName: 'Chiara B.' },
+  'Chiaretta'
+);
+assert.equal(joinRes3.updatedMembers.length, 2);
+assert.equal(joinRes3.updatedMembers[1].name, 'Chiaretta', 'Existing participant name must be updated');
+assert.equal(joinRes3.updatedMembers[1].uid, 'uid_chiara');
+
+// 15d: Empty custom name fallback to user.displayName or Compagno
+const joinRes4 = computeJoinedMembers(
+  initialTripMembers,
+  ['uid_lorenzo'],
+  { uid: 'uid_guest', displayName: 'Giulia' },
+  '   '
+);
+assert.equal(joinRes4.updatedMembers[1].name, 'Giulia', 'Whitespace custom name must fall back to user displayName');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name)');

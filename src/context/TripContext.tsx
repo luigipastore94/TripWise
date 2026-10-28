@@ -47,6 +47,10 @@ export function loadCachedUser(): UserProfile | null {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.uid === 'string') {
+        const customName = localStorage.getItem(`tripwise_custom_profile_name_${parsed.uid}`);
+        if (customName && customName.trim()) {
+          return { ...(parsed as UserProfile), displayName: customName.trim() };
+        }
         return parsed as UserProfile;
       }
     }
@@ -259,6 +263,7 @@ interface TripContextValue {
   clearJoinNotification: () => void;
   signInWithGoogle: () => Promise<{ ok: boolean; message?: string }>;
   signOut: () => Promise<void>;
+  updateUserProfileName: (newName: string) => void;
   selectTrip: (tripId: string) => void;
   createTrip: (input: CreateTripInput) => TripData;
   joinTripByCode: (
@@ -626,7 +631,16 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     initFirestoreInstance();
-    const unsub = subscribeToAuthChanges(async (authUser) => {
+    const unsub = subscribeToAuthChanges(async (incomingUser) => {
+      let authUser = incomingUser;
+      if (authUser) {
+        try {
+          const customName = localStorage.getItem(`tripwise_custom_profile_name_${authUser.uid}`);
+          if (customName && customName.trim()) {
+            authUser = { ...authUser, displayName: customName.trim() };
+          }
+        } catch {}
+      }
       setUser(authUser);
       if (authUser) {
         persistCachedUser(authUser);
@@ -920,6 +934,71 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTripsLoading(false);
     setSyncStatus('local');
   }, []);
+
+  const updateUserProfileName = useCallback(
+    (newName: string) => {
+      const trimmed = newName.trim();
+      if (!trimmed || !user?.uid) return;
+
+      try {
+        localStorage.setItem(`tripwise_custom_profile_name_${user.uid}`, trimmed);
+        localStorage.setItem('tripwise_pending_join_name', trimmed);
+      } catch {
+        // ignore
+      }
+
+      const updatedUser: UserProfile = { ...user, displayName: trimmed };
+      setUser(updatedUser);
+      persistCachedUser(updatedUser);
+
+      // Also update the active trip's member with this UID
+      setTrips((prev) => {
+        const current = prev.find((t) => t.id === activeTripId) ?? prev[0];
+        if (!current) return prev;
+
+        let memberFound = false;
+        const updatedMembers = current.members.map((m) => {
+          if (m.uid === user.uid) {
+            memberFound = true;
+            return { ...m, name: trimmed, updatedAt: Date.now() };
+          }
+          return m;
+        });
+
+        if (!memberFound && updatedMembers.length > 0) {
+          const firstUnlinkedIdx = updatedMembers.findIndex((m) => !m.uid);
+          if (firstUnlinkedIdx >= 0) {
+            updatedMembers[firstUnlinkedIdx] = {
+              ...updatedMembers[firstUnlinkedIdx],
+              name: trimmed,
+              uid: user.uid,
+              updatedAt: Date.now()
+            };
+            memberFound = true;
+          }
+        }
+
+        if (!memberFound) return prev;
+
+        const updatedTrip: TripData = {
+          ...current,
+          members: updatedMembers,
+          updatedAt: Date.now()
+        };
+
+        const next = prev.map((t) => (t.id === current.id ? updatedTrip : t));
+        persistTripsLocally(next);
+
+        if (isCloudAvailable && user.uid) {
+          pushTripToCloud(updatedTrip)
+            .then(() => updateLastSyncedTrip(updatedTrip))
+            .catch(() => {});
+        }
+        return next;
+      });
+    },
+    [user, activeTripId, persistTripsLocally, isCloudAvailable, updateLastSyncedTrip]
+  );
 
   const mutateActiveTrip = useCallback(
     (updater: (trip: TripData) => TripData) => {
@@ -2021,6 +2100,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearJoinNotification,
         signInWithGoogle,
         signOut,
+        updateUserProfileName,
         selectTrip,
         createTrip,
         joinTripByCode,

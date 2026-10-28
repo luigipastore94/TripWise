@@ -13,7 +13,9 @@ import {
   Loader2,
   GitMerge,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Pencil,
+  X
 } from 'lucide-react';
 import { ModalDialog } from '../ui/ModalDialog';
 import { useTrip } from '../../context/TripContext';
@@ -54,6 +56,7 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
     syncStatus,
     signInWithGoogle,
     signOut,
+    updateUserProfileName,
     colorScheme,
     setColorScheme,
     updateTripMeta,
@@ -72,6 +75,52 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
   const [mergeCode, setMergeCode] = useState('');
   const [isMerging, setIsMerging] = useState(false);
   const [mergeFeedback, setMergeFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editingMemberName, setEditingMemberName] = useState('');
+  const [isEditingProfileName, setIsEditingProfileName] = useState(false);
+  const [profileNameDraft, setProfileNameDraft] = useState('');
+  const [profileSavedFeedback, setProfileSavedFeedback] = useState(false);
+
+  const handleStartEditProfileName = () => {
+    setProfileNameDraft(user?.displayName || '');
+    setIsEditingProfileName(true);
+  };
+
+  const handleSaveProfileName = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = profileNameDraft.trim();
+    if (!trimmed) {
+      setIsEditingProfileName(false);
+      return;
+    }
+    updateUserProfileName(trimmed);
+    setIsEditingProfileName(false);
+    setProfileSavedFeedback(true);
+    setTimeout(() => setProfileSavedFeedback(false), 2500);
+  };
+
+  const handleStartEditMember = (mId: string, currentName: string) => {
+    setEditingMemberId(mId);
+    setEditingMemberName(currentName);
+  };
+
+  const handleSaveMemberName = (mId: string) => {
+    if (!activeTrip) return;
+    const trimmed = editingMemberName.trim();
+    if (!trimmed) {
+      setEditingMemberId(null);
+      return;
+    }
+    const targetMember = activeTrip.members.find((m) => m.id === mId);
+    const updated = activeTrip.members.map((m) =>
+      m.id === mId ? { ...m, name: trimmed, updatedAt: Date.now() } : m
+    );
+    updateTripMeta({ members: updated });
+    if (targetMember?.uid && user?.uid && targetMember.uid === user.uid) {
+      updateUserProfileName(trimmed);
+    }
+    setEditingMemberId(null);
+  };
 
   const handleManualSync = async () => {
     setSyncingNow(true);
@@ -226,8 +275,58 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
                     {user.displayName.slice(0, 1).toUpperCase()}
                   </div>
                 )}
-                <div className="min-w-0">
-                  <div className="text-sm font-bold truncate">{user.displayName}</div>
+                <div className="min-w-0 flex-1">
+                  {isEditingProfileName ? (
+                    <form onSubmit={handleSaveProfileName} className="flex items-center gap-1.5 py-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={profileNameDraft}
+                        onChange={(e) => setProfileNameDraft(e.target.value)}
+                        placeholder="Il tuo nome visibile..."
+                        className="flex-1 max-w-[200px] rounded-lg border border-brand-500 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-bold text-slate-900 dark:text-white"
+                      />
+                      <button
+                        type="submit"
+                        aria-label="Salva nome"
+                        className="min-h-[32px] px-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold inline-flex items-center gap-1 shadow-sm transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Salva</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProfileName(false)}
+                        aria-label="Annulla"
+                        className="min-h-[32px] px-2 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-xs font-semibold"
+                      >
+                        <X className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-extrabold truncate text-slate-900 dark:text-white">
+                        {user.displayName}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleStartEditProfileName}
+                        title="Modifica il nome con cui ti vedono i tuoi compagni"
+                        aria-label="Modifica il tuo nome"
+                        className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 dark:text-brand-400"
+                      >
+                        <Pencil className="w-3 h-3" aria-hidden="true" />
+                        <span>Modifica</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {profileSavedFeedback && (
+                    <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in duration-150">
+                      ✓ Nome aggiornato e sincronizzato con i compagni!
+                    </div>
+                  )}
+
                   {user.email && (
                     <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                       {user.email}
@@ -418,32 +517,92 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
               <span>Partecipanti ({activeTrip.members.length})</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {activeTrip.members.map((m) => (
-                <span
-                  key={m.id}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
-                >
+              {activeTrip.members.map((m) => {
+                const isCurrentUser = Boolean(user?.uid && m.uid === user.uid);
+                const isEditing = editingMemberId === m.id;
+
+                if (isEditing) {
+                  return (
+                    <span
+                      key={m.id}
+                      className="inline-flex items-center gap-1.5 p-1 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-300 dark:border-brand-700 text-xs"
+                    >
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingMemberName}
+                        onChange={(e) => setEditingMemberName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveMemberName(m.id);
+                          } else if (e.key === 'Escape') {
+                            setEditingMemberId(null);
+                          }
+                        }}
+                        className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-900 dark:text-white max-w-[130px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveMemberName(m.id)}
+                        aria-label="Salva nome"
+                        className="p-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700"
+                      >
+                        <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMemberId(null)}
+                        aria-label="Annulla"
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        <X className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </span>
+                  );
+                }
+
+                return (
                   <span
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: m.color }}
-                  />
-                  <span>{m.name}</span>
-                  {activeTrip.members.length > 1 && (
+                    key={m.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: m.color }}
+                    />
+                    <span>{m.name}</span>
+                    {isCurrentUser && (
+                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300">
+                        Tu
+                      </span>
+                    )}
                     <button
                       type="button"
-                      onClick={() =>
-                        updateTripMeta({
-                          members: activeTrip.members.filter((item) => item.id !== m.id)
-                        })
-                      }
-                      aria-label={`Rimuovi ${m.name}`}
-                      className="text-slate-400 hover:text-red-500 ml-1"
+                      onClick={() => handleStartEditMember(m.id, m.name)}
+                      title={`Modifica il nome con cui ti vedono i compagni (${m.name})`}
+                      aria-label={`Modifica nome di ${m.name}`}
+                      className="text-slate-400 hover:text-brand-600 ml-0.5"
                     >
-                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <Pencil className="w-3 h-3" aria-hidden="true" />
                     </button>
-                  )}
-                </span>
-              ))}
+                    {activeTrip.members.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateTripMeta({
+                            members: activeTrip.members.filter((item) => item.id !== m.id)
+                          })
+                        }
+                        aria-label={`Rimuovi ${m.name}`}
+                        className="text-slate-400 hover:text-red-500 ml-0.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
             </div>
             <form onSubmit={handleAddMember} className="flex gap-2">
               <label htmlFor={`${idPrefix}-newmem`} className="visually-hidden">

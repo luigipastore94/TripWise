@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useId } from 'react';
-import { CalendarRange, Check, Trash2, AlertTriangle, Camera, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { CalendarRange, Check, Trash2, AlertTriangle, Camera, Image as ImageIcon, X, Loader2, Users, Pencil } from 'lucide-react';
 import { ModalDialog } from '../ui/ModalDialog';
 import { useTrip } from '../../context/TripContext';
 import { SUPPORTED_CURRENCIES } from '../../data/presets';
@@ -12,7 +12,7 @@ interface TripEditModalProps {
 }
 
 export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) => {
-  const { activeTrip, updateTripDatesAndDetails, deleteTrip } = useTrip();
+  const { activeTrip, updateTripDatesAndDetails, deleteTrip, user, updateTripMeta, updateUserProfileName } = useTrip();
   const idPrefix = useId();
 
   const [emoji, setEmoji] = useState('🌍');
@@ -27,6 +27,8 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
   const [destinationCurrency, setDestinationCurrency] = useState('EUR');
   const [rateDraft, setRateDraft] = useState('1');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editingMemberName, setEditingMemberName] = useState('');
 
   useEffect(() => {
     if (activeTrip && open) {
@@ -40,6 +42,8 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
       setBaseCurrency(activeTrip.baseCurrency);
       setDestinationCurrency(activeTrip.destinationCurrency);
       setRateDraft(String(activeTrip.exchangeRate));
+      setEditingMemberId(null);
+      setEditingMemberName('');
       setConfirmDelete(false);
     }
   }, [activeTrip, open]);
@@ -52,6 +56,29 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
     const e = new Date(`${endDate}T00:00:00`).getTime();
     return Math.min(Math.max(Math.floor((e - s) / 86400000) + 1, 1), 60);
   })();
+
+  const handleStartEditMember = (mId: string, currentName: string) => {
+    setEditingMemberId(mId);
+    setEditingMemberName(currentName);
+  };
+
+  const handleSaveMemberName = (mId: string) => {
+    if (!activeTrip) return;
+    const trimmed = editingMemberName.trim();
+    if (!trimmed) {
+      setEditingMemberId(null);
+      return;
+    }
+    const targetMember = activeTrip.members.find((m) => m.id === mId);
+    const updated = activeTrip.members.map((m) =>
+      m.id === mId ? { ...m, name: trimmed, updatedAt: Date.now() } : m
+    );
+    updateTripMeta({ members: updated });
+    if (targetMember?.uid && user?.uid && targetMember.uid === user.uid) {
+      updateUserProfileName(trimmed);
+    }
+    setEditingMemberId(null);
+  };
 
   const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -340,6 +367,95 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
             />
           </div>
         </div>
+
+        {/* Partecipanti al Viaggio & modifica nome */}
+        {activeTrip.members && activeTrip.members.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-brand-500" aria-hidden="true" />
+                <span>Partecipanti ({activeTrip.members.length})</span>
+              </span>
+              <span className="text-[11px] font-normal lowercase text-slate-400">
+                tocca la matita per modificare il tuo nome
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeTrip.members.map((m) => {
+                const isCurrentUser = Boolean(user?.uid && m.uid === user.uid);
+                const isEditing = editingMemberId === m.id;
+
+                if (isEditing) {
+                  return (
+                    <span
+                      key={m.id}
+                      className="inline-flex items-center gap-1.5 p-1 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-300 dark:border-brand-700 text-xs"
+                    >
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingMemberName}
+                        onChange={(e) => setEditingMemberName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveMemberName(m.id);
+                          } else if (e.key === 'Escape') {
+                            setEditingMemberId(null);
+                          }
+                        }}
+                        className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-900 dark:text-white max-w-[130px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveMemberName(m.id)}
+                        aria-label="Salva nome"
+                        className="p-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700"
+                      >
+                        <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMemberId(null)}
+                        aria-label="Annulla"
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        <X className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </span>
+                  );
+                }
+
+                return (
+                  <span
+                    key={m.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: m.color }}
+                    />
+                    <span>{m.name}</span>
+                    {isCurrentUser && (
+                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300">
+                        Tu
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditMember(m.id, m.name)}
+                      title={`Modifica nome (${m.name})`}
+                      aria-label={`Modifica nome di ${m.name}`}
+                      className="text-slate-400 hover:text-brand-600 ml-0.5"
+                    >
+                      <Pencil className="w-3 h-3" aria-hidden="true" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {confirmDelete ? (
           <div
