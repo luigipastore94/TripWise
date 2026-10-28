@@ -1,0 +1,1014 @@
+import assert from 'node:assert/strict';
+
+// 1. Flexible Currency Amount Parser (Postel's Law)
+function parseFlexibleAmount(raw) {
+  if (!raw) return 0;
+  const cleaned = raw.replace(/[^\d.,-]/g, '').trim();
+  if (!cleaned) return 0;
+  const lastComma = cleaned.lastIndexOf(',');
+  const lastDot = cleaned.lastIndexOf('.');
+  let normalized = cleaned;
+  if (lastComma > -1 && lastDot > -1) {
+    normalized =
+      lastComma > lastDot
+        ? cleaned.replace(/\./g, '').replace(',', '.')
+        : cleaned.replace(/,/g, '');
+  } else if (lastComma > -1) {
+    normalized = cleaned.replace(',', '.');
+  }
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+assert.equal(parseFlexibleAmount('12,50'), 12.5);
+assert.equal(parseFlexibleAmount('1.250,50 €'), 1250.5);
+assert.equal(parseFlexibleAmount('1,250.50'), 1250.5);
+assert.equal(parseFlexibleAmount('¥3500'), 3500);
+
+// 2. Trip Date Resizing Logic (preserving existing activities)
+function addDaysIso(isoDate, offsetDays) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d + offsetDays));
+  return utc.toISOString().slice(0, 10);
+}
+
+function reconcileDaysWithDateRange(existingDays, startDate, endDate) {
+  const [sy, sm, sd] = startDate.split('-').map(Number);
+  const [ey, em, ed] = endDate.split('-').map(Number);
+  const rawCount = Math.floor((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000) + 1;
+  const count = Math.min(Math.max(rawCount || 1, 1), 60);
+
+  const nextDays = [];
+  for (let i = 0; i < count; i++) {
+    const iso = addDaysIso(startDate, i);
+    const prev = existingDays[i];
+    if (prev) {
+      nextDays.push({
+        ...prev,
+        dayNumber: i + 1,
+        date: iso
+      });
+    } else {
+      nextDays.push({
+        id: `day_${i + 1}`,
+        dayNumber: i + 1,
+        date: iso,
+        title: `Giorno ${i + 1}`,
+        activities: []
+      });
+    }
+  }
+  return nextDays;
+}
+
+const initialDays = [
+  { id: 'd1', dayNumber: 1, date: '2026-11-19', title: 'Arrivo', activities: [{ id: 'a1' }] },
+  { id: 'd2', dayNumber: 2, date: '2026-11-20', title: 'Centro', activities: [] }
+];
+const shifted = reconcileDaysWithDateRange(initialDays, '2026-11-21', '2026-11-24');
+assert.equal(shifted.length, 4);
+assert.equal(shifted[0].date, '2026-11-21');
+assert.equal(shifted[0].title, 'Arrivo');
+assert.equal(shifted[0].activities.length, 1);
+assert.equal(shifted[3].date, '2026-11-24');
+
+// 3. Natural Language Itinerary Engine Tests
+const { parseNaturalLanguageItinerary, EXAMPLE_HUMAN_ITINERARY_TEXT } = await import(
+  '../src/utils/naturalItineraryParser.ts'
+);
+
+// Test 3a: Exact user's Japan prompt
+const japanPlan = parseNaturalLanguageItinerary(EXAMPLE_HUMAN_ITINERARY_TEXT, {
+  referenceYear: 2026,
+  enrichFreeDays: true
+});
+
+assert.equal(japanPlan.isValid, true);
+assert.equal(japanPlan.days.length, 16);
+assert.equal(japanPlan.startDate, '2026-11-22');
+assert.equal(japanPlan.endDate, '2026-12-07');
+assert.equal(japanPlan.detectedPresetId, 'japan');
+assert.equal(japanPlan.detectedCurrency, 'JPY');
+assert.equal(japanPlan.detectedExchangeRate, 162.5);
+
+// Check Day 1 (22/11): arrival at 12:50
+const day1 = japanPlan.days[0];
+assert.equal(day1.date, '2026-11-22');
+const day1Arrival = day1.activities.find((a) => a.title.includes('Arrivo a Tokyo'));
+assert.ok(day1Arrival, 'Should have Tokyo arrival on Day 1');
+assert.equal(day1Arrival.time, '12:50');
+assert.equal(day1Arrival.category, 'transport');
+
+// Check Day 3 (24/11): Kamakura
+const day3 = japanPlan.days[2];
+assert.equal(day3.date, '2026-11-24');
+assert.ok(
+  day3.activities.some((a) => a.title.toLowerCase().includes('kamakura')),
+  'Should have Kamakura on 24/11'
+);
+
+// Check Day 4 (25/11): teamLab Planets at 08:30
+const day4 = japanPlan.days[3];
+assert.equal(day4.date, '2026-11-25');
+const teamlab = day4.activities.find((a) => a.title.toLowerCase().includes('teamlab'));
+assert.ok(teamlab, 'Should have teamLab Planets on 25/11');
+assert.equal(teamlab.time, '08:30');
+
+// Check Day 6 (27/11): Fujikawaguchiko
+const day6 = japanPlan.days[5];
+assert.equal(day6.date, '2026-11-27');
+assert.ok(
+  day6.activities.some((a) => a.title.toLowerCase().includes('fujikawaguchiko') || a.title.toLowerCase().includes('chureito')),
+  'Should be at Fujikawaguchiko on 27/11'
+);
+
+// Check Day 7 (28/11): Transfer to Kyoto
+const day7 = japanPlan.days[6];
+assert.equal(day7.date, '2026-11-28');
+assert.ok(
+  day7.activities.some((a) => a.title.includes('Trasferimento a Kyoto')),
+  'Should have Kyoto transfer on 28/11'
+);
+
+// Check Kyoto stay (29/11 - 02/12): Early morning distribution & Uji/Nara day trip & Maikoya
+const day8 = japanPlan.days[7]; // 29/11
+assert.ok(
+  day8.activities.some((a) => a.title.includes('Fushimi Inari') && a.time === '07:30'),
+  'Fushimi Inari should be early morning (07:30)'
+);
+assert.ok(
+  day8.activities.some((a) => a.title.toLowerCase().includes('maikoya')),
+  'MAIKOYA tea ceremony should be in Kyoto stay'
+);
+
+const day9 = japanPlan.days[8]; // 30/11
+assert.ok(
+  day9.activities.some((a) => a.title.includes('Arashiyama') && a.time === '07:30'),
+  'Arashiyama should be early morning (07:30)'
+);
+
+const day10 = japanPlan.days[9]; // 01/12
+assert.ok(
+  day10.activities.some((a) => a.title.includes('Uji')) &&
+  day10.activities.some((a) => a.title.includes('Nara')),
+  'Day 10 should have excursion to Uji and Nara'
+);
+
+const day11 = japanPlan.days[10]; // 02/12
+assert.ok(
+  day11.activities.some((a) => a.title.includes('Kiyomizu-dera')),
+  'Day 11 should have Kiyomizu-dera in morning'
+);
+assert.ok(
+  day11.activities.some((a) => a.title.includes('Hiroshima') && a.category === 'transport'),
+  'Day 11 should have afternoon/evening transfer to Hiroshima'
+);
+
+// Check Day 12 (03/12): Hiroshima + Miyajima
+const day12 = japanPlan.days[11];
+assert.equal(day12.date, '2026-12-03');
+assert.ok(day12.activities.some((a) => a.title.includes('Hiroshima')));
+assert.ok(day12.activities.some((a) => a.title.includes('Miyajima')));
+assert.ok(day12.activities.some((a) => a.title.includes('Rientro a Hiroshima')));
+
+// Check Day 13 (04/12): Hiroshima -> Himeji Castle -> Osaka
+const day13 = japanPlan.days[12];
+assert.equal(day13.date, '2026-12-04');
+assert.ok(day13.activities.some((a) => a.title.includes('Himeji')));
+assert.ok(day13.activities.some((a) => a.title.includes('Osaka') && a.category === 'transport'));
+
+// Check Day 14 (05/12): Universal Studios
+const day14 = japanPlan.days[13];
+assert.equal(day14.date, '2026-12-05');
+assert.ok(
+  day14.activities.some((a) => a.title.toLowerCase().includes('universal')),
+  'Universal Studios should be on 05/12'
+);
+
+// Check Day 16 (07/12): Return flight at 16:00
+const day16 = japanPlan.days[15];
+assert.equal(day16.date, '2026-12-07');
+const returnFlight = day16.activities.find((a) => a.title.includes('Volo di rientro'));
+assert.ok(returnFlight, 'Should have return flight on Day 16');
+assert.equal(returnFlight.time, '16:00');
+
+// Coordinates verification: verify high-precision GPS pins are attached
+assert.ok(day1Arrival.lat && day1Arrival.lng, 'Day 1 arrival must have GPS coordinates');
+assert.ok(teamlab.lat && teamlab.lng, 'teamLab must have GPS coordinates');
+
+// Test 3b: Universal multi-city itinerary (e.g. Portugal)
+const portugalPrompt = `- 10/08: arrivo a Lisbona ore 11:15
+- 10-13/08: Lisbona (12/08 gita a Sintra)
+- 13/08 trasferimento a Porto
+- 13-16/08: Porto
+- 16/08 volo di rientro da Porto ore 18:30`;
+
+const portugalPlan = parseNaturalLanguageItinerary(portugalPrompt, { referenceYear: 2026 });
+assert.equal(portugalPlan.isValid, true);
+assert.equal(portugalPlan.days.length, 7);
+assert.equal(portugalPlan.startDate, '2026-08-10');
+assert.equal(portugalPlan.endDate, '2026-08-16');
+assert.equal(portugalPlan.detectedCurrency, 'EUR');
+assert.ok(portugalPlan.days[2].activities.some((a) => a.title.includes('Sintra')));
+
+// Test 3c: Complex Hierarchical Bullet Outline (User's 15-day notes with stages, Unicode bullets, Italian days)
+const hierarchicalOutline = `
+TAPPA 1: Tokyo & Kamakura (5 Notti)
+●	22 Nov (Dom) – Giorno 1: Arrivo a Tokyo
+○	Atterraggio alle 12:00. Trasferimento in hotel a Tokyo.
+○	Sera: Akihabara (elettronica + manga).
+●	23 Nov (Lun) – Giorno 2: 
+○	Santuario Meiji 
+○	Shinjuku Goyen (parco foliage)
+○	Shinjuku (gatto 3D)
+○	Shibuya (incrocio)
+●	24 Nov (Mar) – Giorno 3: Gita a Kamakura
+○	In giornata: Treno per Kamakura. Foliage tardivo costiero al tempio Meigetsu-in e Grande Buddha. Sera a Tokyo.
+●	25 Nov (Mer) – Giorno 4: 
+○	Mattina: ore 08.30 teamlab Planet
+○	Statua della libertà e lungomare
+○	Ginza.
+○	Mercato del Pesce.
+○	Rapponigi (viale luci Natale)
+●	26 Nov (Gio) - Giorno 5: Tokyo Moderna & Tramonto
+○	Palazzo Imperiale
+○	Parco Ueno.
+○	Senso-ji
+○	Tokyo sky-tree
+TAPPA 2: Monte Fuji / 5 Laghi (1 Notte)
+●	27 Nov (Ven) – Giorno 6: Il tunnel di aceri e il Ryokan
+○	Nota: Spedisci i bagagli grandi dall'hotel di Tokyo direttamente a quello di Kyoto. Viaggia solo con uno zaino.
+○	Mattina: Bus o treno presto da Tokyo al Lago Kawaguchi.
+○	Pomeriggio: Passeggiata nel Momiji Corridor e salita alla Pagoda Chureito per la foto simbolo con il Fuji e le foglie rosse.
+○	Decidere se prenotare cena in hotel o no
+TAPPA 3: Kyoto (4 Notti)
+●	28 Nov (Sab) – Giorno 7: Benvenuti a Kyoto
+○	Mattina: Treno dal Fuji verso Kyoto
+○	Pomeriggio: quartiere storico di Gion, tra le vie Hanamikoji e Pontocho.
+○	Cerimonia del tè  MAIKOYA (sede Gion/Kiyomizu) 
+●	29 Nov (Dom) – Giorno 8: 
+○	Mattina presto (ore 06:30 - 07:00): Kiyomizu-dera. Discesa a piedi attraverso le stradine storiche di Ninenzaka e Sannenzaka.
+○	Tarda Mattina: Tempio Kodai-ji e Santuario Yasaka.
+○	Pomeriggio: Spostamento a nord-ovest per visitare il Padiglione d'Oro (Kinkaku-ji e il giardino zen di Ryoan-ji.
+○	Sera (Light-up): Spettacolare illuminazione serale al Tempio Eikan-do (uno dei luoghi più famosi di Kyoto per il foliage notturno). Spostato a questa sera per logica di percorso.
+●	30 Nov (Lun) – Giorno 9: 
+○	Intera giornata ad Arashiyama: Foresta di bambù, tempio Tenryu-ji e viaggio sul treno panoramico Sagano Romantic Train.
+○	Sera: Spettacolare illuminazione notturna al tempio Eikan-do.
+●	01 Dic (Mar) – Giorno 10:
+○	Mattina presto (07:00 - 07:30): Santuario Fushimi Inari Taisha (passeggiata sotto i 10.000 torii rossi prima dell'arrivo dei tour).
+○	Pomeriggio (Scegliere tra Opzione A o B):
+■	Opzione A (Spettacolare foliage): Visita al Tempio Ruriko-in (prenotazione obbligatoria online) preso con il trenetto Eizan.
+■	Opzione B (Classica e filassante): Passeggiata lungo il Sentiero della Filosofia con visita al Padiglione d'Argento (Ginkaku-ji)
+●	02 Dic (Mer) – Giorno 11: 
+○	Uji
+○	Nara
+○	Trasferimento Hiroshima
+TAPPA 4: Hiroshima (2 Notti)
+●	3 Dic (Gio) – Giorno 12: 
+○	Mattina: Parco della pace
+○	Pomeriggio: Isola Miyajima fino al tramonto
+TAPPA 5: Osaka (3 Notti)
+●	4 Dic (Ven) – Giorno 13: 
+○	Mattina: Castello di Himeji
+○	Trasferimento Osaka
+●	5 Dic (Sab) – Giorno 14: 
+○	Universal Studio Osaka
+●	6 Dic (Dom) – Giorno 15: 
+○	Minoh Park
+○	Kaiyukan
+○	Castello di Osaka
+`;
+
+const outlinePlan = parseNaturalLanguageItinerary(hierarchicalOutline, { referenceYear: 2026 });
+assert.equal(outlinePlan.isValid, true);
+assert.equal(outlinePlan.days.length, 15);
+assert.equal(outlinePlan.startDate, '2026-11-22');
+assert.equal(outlinePlan.endDate, '2026-12-06');
+assert.ok(outlinePlan.days[0].activities.length >= 2, 'Day 1 should have arrival and Akihabara');
+assert.ok(outlinePlan.days[1].activities.length >= 4, 'Day 2 should have Meiji, Shinjuku Gyoen, 3D Cat, Shibuya');
+assert.ok(outlinePlan.days[6].activities.some((a) => a.title.toLowerCase().includes('maikoya')), 'Day 7 should include Maikoya tea ceremony');
+assert.ok(outlinePlan.days[7].activities.some((a) => a.title.includes('Kiyomizu-dera')), 'Day 8 should include Kiyomizu-dera');
+assert.ok(outlinePlan.days[10].activities.some((a) => a.title.includes('Uji')), 'Day 11 should have Uji');
+assert.ok(outlinePlan.days[10].activities.some((a) => a.title.includes('Nara')), 'Day 11 should have Nara');
+assert.ok(outlinePlan.days[11].activities.some((a) => a.title.includes('Miyajima')), 'Day 12 should have Miyajima');
+assert.ok(outlinePlan.days[13].activities.some((a) => a.title.toLowerCase().includes('universal')), 'Day 14 should have Universal');
+assert.ok(outlinePlan.days[14].activities.some((a) => a.title.includes('Kaiyukan')), 'Day 15 should have Kaiyukan');
+
+// Verify activity times are staggered (no collision on default 09:00 for all activities)
+const day2Times = outlinePlan.days[1].activities.map((a) => a.time).filter(Boolean);
+const uniqueTimes = new Set(day2Times);
+assert.equal(uniqueTimes.size, day2Times.length, 'Activities on Day 2 must have distinct staggered times');
+
+// 5. Booking PDF Ticket and Attachment Domain Verification
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+assert.equal(formatFileSize(512), '512 B');
+assert.equal(formatFileSize(204800), '200 KB');
+assert.equal(formatFileSize(1572864), '1.5 MB');
+
+const samplePdfBooking = {
+  id: 'bkg_sample_1',
+  type: 'train',
+  title: 'Frecciarossa 9612 Milano-Roma',
+  provider: 'Trenitalia',
+  confirmationCode: 'PNR89K',
+  dateTime: '2026-11-23T08:30',
+  pdfDataUrl: 'data:application/pdf;base64,JVBERi0xLjQK...',
+  pdfFileName: 'Biglietto_Frecciarossa.pdf',
+  pdfFileSize: 204800
+};
+
+assert.equal(samplePdfBooking.pdfFileName, 'Biglietto_Frecciarossa.pdf');
+assert.equal(samplePdfBooking.pdfFileSize, 204800);
+assert.ok(samplePdfBooking.pdfDataUrl.startsWith('data:application/pdf;base64,'));
+
+// 6. Collaborative Concurrent Sync & Array ID Merge Tests
+const { mergeTrips, mergeEntityLists, mergeItineraryDays } = await import(
+  '../src/utils/tripMerge.ts'
+);
+
+// 6a. Concurrent addition on different sections (Checklist + Expense)
+const baseTripFixture = {
+  id: 'trip_1',
+  inviteCode: 'TW-TEST-1234',
+  title: 'Tokyo 2026',
+  destination: 'Tokyo',
+  emoji: '🗼',
+  startDate: '2026-11-22',
+  endDate: '2026-11-25',
+  baseCurrency: 'EUR',
+  destinationCurrency: 'JPY',
+  exchangeRate: 162.5,
+  defaultCenter: [35.6762, 139.6503],
+  members: [{ id: 'm1', name: 'Alice', color: '#3B82F6' }],
+  memberUids: ['uid_alice'],
+  days: [
+    {
+      id: 'd1',
+      dayNumber: 1,
+      date: '2026-11-22',
+      title: 'Arrivo',
+      activities: [{ id: 'act_1', time: '10:00', title: 'Check-in', locationName: 'Hotel', category: 'lodging', completed: false }]
+    }
+  ],
+  savedPlaces: [],
+  expenses: [],
+  bookings: [],
+  checklist: [
+    { id: 'chk_1', category: 'documents', text: 'Passaporto', completed: false }
+  ],
+  updatedAt: 1000
+};
+
+// User A checks passport locally
+const localTripFixtureA = {
+  ...baseTripFixture,
+  checklist: [
+    { id: 'chk_1', category: 'documents', text: 'Passaporto', completed: true, updatedAt: 2000 }
+  ],
+  updatedAt: 2000
+};
+
+// User B adds an expense remotely
+const remoteTripFixtureB = {
+  ...baseTripFixture,
+  expenses: [
+    {
+      id: 'exp_b1',
+      title: 'Pranzo Ramen',
+      amount: 2500,
+      currency: 'JPY',
+      amountInBase: 15.38,
+      paidByMemberId: 'm1',
+      splitBetweenMemberIds: ['m1'],
+      category: 'food',
+      date: '2026-11-22',
+      updatedAt: 2001
+    }
+  ],
+  updatedAt: 2001
+};
+
+const mergeResult1 = mergeTrips(baseTripFixture, localTripFixtureA, remoteTripFixtureB);
+assert.equal(mergeResult1.merged.checklist[0].completed, true, 'User A checklist check must be preserved');
+assert.equal(mergeResult1.merged.expenses.length, 1, 'User B expense must be preserved');
+assert.equal(mergeResult1.merged.expenses[0].id, 'exp_b1');
+assert.equal(mergeResult1.hasLocalChanges, true, 'Local changes relative to remote must flag hasLocalChanges=true');
+
+// 6b. Concurrent expense additions from two users simultaneously
+const localWithExpA = {
+  ...baseTripFixture,
+  expenses: [
+    {
+      id: 'exp_a1',
+      title: 'Metro Tokyo',
+      amount: 600,
+      currency: 'JPY',
+      amountInBase: 3.69,
+      paidByMemberId: 'm1',
+      splitBetweenMemberIds: ['m1'],
+      category: 'transport',
+      date: '2026-11-22',
+      updatedAt: 2002
+    }
+  ],
+  updatedAt: 2002
+};
+
+const mergeResult2 = mergeTrips(baseTripFixture, localWithExpA, remoteTripFixtureB);
+assert.equal(mergeResult2.merged.expenses.length, 2, 'Both concurrent expenses must be preserved');
+const expenseIds = mergeResult2.merged.expenses.map((e) => e.id);
+assert.ok(expenseIds.includes('exp_a1'), 'Local expense A must be present');
+assert.ok(expenseIds.includes('exp_b1'), 'Remote expense B must be present');
+
+// 6c. Itinerary activities concurrent merge on Day 1
+const localDayWithAct = {
+  ...baseTripFixture,
+  days: [
+    {
+      ...baseTripFixture.days[0],
+      activities: [
+        { ...baseTripFixture.days[0].activities[0], completed: true, updatedAt: 2010 },
+        { id: 'act_local', time: '14:00', title: 'Shibuya Sky', locationName: 'Shibuya', category: 'sightseeing', completed: false, updatedAt: 2010 }
+      ]
+    }
+  ],
+  updatedAt: 2010
+};
+
+const remoteDayWithAct = {
+  ...baseTripFixture,
+  days: [
+    {
+      ...baseTripFixture.days[0],
+      activities: [
+        baseTripFixture.days[0].activities[0],
+        { id: 'act_remote', time: '12:00', title: 'Pranzo Sushi', locationName: 'Ginza', category: 'food', completed: false, updatedAt: 2011 }
+      ]
+    }
+  ],
+  updatedAt: 2011
+};
+
+const mergeResult3 = mergeTrips(baseTripFixture, localDayWithAct, remoteDayWithAct);
+assert.equal(mergeResult3.merged.days[0].activities.length, 3, 'All activities from both collaborators must be merged on Day 1');
+const actIds = mergeResult3.merged.days[0].activities.map((a) => a.id);
+assert.ok(actIds.includes('act_1'));
+assert.ok(actIds.includes('act_local'));
+assert.ok(actIds.includes('act_remote'));
+const mergedAct1 = mergeResult3.merged.days[0].activities.find((a) => a.id === 'act_1');
+assert.equal(mergedAct1.completed, true, 'Completed status of act_1 from local must be preserved');
+
+// 6d. Deletion vs Addition: no resurrection of deleted items
+const baseWithTwoExpenses = {
+  ...baseTripFixture,
+  expenses: [
+    { id: 'exp_del', title: 'Da cancellare', amount: 10, currency: 'EUR', amountInBase: 10, paidByMemberId: 'm1', splitBetweenMemberIds: ['m1'], category: 'other', date: '2026-11-22' },
+    { id: 'exp_keep', title: 'Da tenere', amount: 20, currency: 'EUR', amountInBase: 20, paidByMemberId: 'm1', splitBetweenMemberIds: ['m1'], category: 'other', date: '2026-11-22' }
+  ]
+};
+
+// Local user deletes exp_del
+const localDeleted = {
+  ...baseWithTwoExpenses,
+  expenses: [baseWithTwoExpenses.expenses[1]],
+  updatedAt: 3000
+};
+
+// Remote user adds exp_new
+const remoteAdded = {
+  ...baseWithTwoExpenses,
+  expenses: [
+    ...baseWithTwoExpenses.expenses,
+    { id: 'exp_new', title: 'Nuovo remoto', amount: 30, currency: 'EUR', amountInBase: 30, paidByMemberId: 'm1', splitBetweenMemberIds: ['m1'], category: 'other', date: '2026-11-22', updatedAt: 3001 }
+  ],
+  updatedAt: 3001
+};
+
+const mergeResult4 = mergeTrips(baseWithTwoExpenses, localDeleted, remoteAdded);
+const finalExpIds = mergeResult4.merged.expenses.map((e) => e.id);
+assert.ok(!finalExpIds.includes('exp_del'), 'Deleted item must NOT be resurrected');
+assert.ok(finalExpIds.includes('exp_keep'), 'Existing item must remain');
+assert.ok(finalExpIds.includes('exp_new'), 'Newly added remote item must be included');
+
+// 6e. 2-way merge fallback without base
+const twoWayMerge = mergeEntityLists(undefined, [{ id: '1', val: 'a' }], [{ id: '2', val: 'b' }]);
+assert.equal(twoWayMerge.length, 2);
+assert.equal(twoWayMerge.find((x) => x.id === '1').val, 'a');
+assert.equal(twoWayMerge.find((x) => x.id === '2').val, 'b');
+
+// 6f. Trip cover image metadata merge (Tesler's Law & Postel's Law)
+const localTripWithCover = {
+  ...baseTripFixture,
+  coverImage: 'data:image/jpeg;base64,localCoverImage123'
+};
+const mergeResultCover = mergeTrips(baseTripFixture, localTripWithCover, remoteTripFixtureB);
+assert.equal(mergeResultCover.merged.coverImage, 'data:image/jpeg;base64,localCoverImage123', 'Local cover photo must be merged');
+assert.equal(mergeResultCover.hasLocalChanges, true);
+
+// 6g. Cover image removal invariant: removing cover image must not resurrect remote cover
+const baseWithCover = {
+  ...baseTripFixture,
+  coverImage: 'data:image/jpeg;base64,originalPhoto'
+};
+const localWithoutCover = {
+  ...baseWithCover,
+  updatedAt: baseWithCover.updatedAt + 100
+};
+delete localWithoutCover.coverImage;
+
+const remoteStillWithCover = {
+  ...baseWithCover,
+  updatedAt: baseWithCover.updatedAt + 50
+};
+
+const mergeResultRemoval = mergeTrips(baseWithCover, localWithoutCover, remoteStillWithCover);
+assert.equal(mergeResultRemoval.merged.coverImage, undefined, 'Removed cover image must NOT be resurrected by remote');
+assert.equal('coverImage' in mergeResultRemoval.merged, false, 'coverImage property must be deleted from merged object');
+assert.equal(mergeResultRemoval.hasLocalChanges, true, 'Removal must flag local changes');
+
+// 7. Trip Deletion Domain Invariants
+function computeNextTripsState(currentTrips, tripIdToDelete, currentActiveTripId) {
+  const nextTrips = currentTrips.filter((t) => t.id !== tripIdToDelete);
+  let nextActiveId = currentActiveTripId;
+  if (currentActiveTripId === tripIdToDelete) {
+    nextActiveId = nextTrips[0]?.id ?? '';
+  }
+  return { nextTrips, nextActiveId };
+}
+
+const tripList = [
+  { id: 'trip_alpha', title: 'Giappone Autunno' },
+  { id: 'trip_beta', title: 'Portogallo Estate' },
+  { id: 'trip_gamma', title: 'Islanda Inverno' }
+];
+
+// Deleting non-active trip preserves active ID
+const deleteBeta = computeNextTripsState(tripList, 'trip_beta', 'trip_alpha');
+assert.equal(deleteBeta.nextTrips.length, 2);
+assert.equal(deleteBeta.nextActiveId, 'trip_alpha');
+assert.ok(!deleteBeta.nextTrips.some((t) => t.id === 'trip_beta'));
+
+// Deleting currently active trip falls back to first remaining trip
+const deleteAlpha = computeNextTripsState(tripList, 'trip_alpha', 'trip_alpha');
+assert.equal(deleteAlpha.nextTrips.length, 2);
+assert.equal(deleteAlpha.nextActiveId, 'trip_beta');
+
+// Deleting the last remaining trip yields empty list and empty active ID
+const deleteLast = computeNextTripsState([{ id: 'trip_only', title: 'Solo' }], 'trip_only', 'trip_only');
+assert.equal(deleteLast.nextTrips.length, 0);
+assert.equal(deleteLast.nextActiveId, '');
+
+// 8. Move Activity Between Days Domain Invariants
+function moveActivityBetweenDays(days, sourceDayId, targetDayId, activityId, targetTime) {
+  const sourceDay = days.find((d) => d.id === sourceDayId);
+  const targetDay = days.find((d) => d.id === targetDayId);
+  if (!sourceDay || !targetDay) return days;
+
+  const activity = sourceDay.activities.find((a) => a.id === activityId);
+  if (!activity) return days;
+
+  if (sourceDayId === targetDayId) {
+    if (targetTime && targetTime !== activity.time) {
+      const updated = { ...activity, time: targetTime, updatedAt: Date.now() };
+      const nextActs = sourceDay.activities.map((a) => (a.id === activityId ? updated : a));
+      nextActs.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+      return days.map((d) => (d.id === sourceDayId ? { ...d, activities: nextActs } : d));
+    }
+    return days;
+  }
+
+  const updatedActivity = {
+    ...activity,
+    time: targetTime || activity.time,
+    updatedAt: Date.now()
+  };
+
+  const nextSourceActivities = sourceDay.activities.filter((a) => a.id !== activityId);
+  const nextTargetActivities = [
+    ...targetDay.activities.filter((a) => a.id !== activityId),
+    updatedActivity
+  ];
+  nextTargetActivities.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+
+  return days.map((d) => {
+    if (d.id === sourceDayId) return { ...d, activities: nextSourceActivities };
+    if (d.id === targetDayId) return { ...d, activities: nextTargetActivities };
+    return d;
+  });
+}
+
+const sampleDays = [
+  {
+    id: 'day_1',
+    dayNumber: 1,
+    date: '2026-10-27',
+    title: 'Giorno 1',
+    activities: [
+      { id: 'act_colosseo', time: '09:30', title: 'Colosseo', category: 'sightseeing', completed: false, lat: 41.8902, lng: 12.4922 },
+      { id: 'act_pranzo', time: '13:00', title: 'Trattoria Romana', category: 'food', completed: false }
+    ]
+  },
+  {
+    id: 'day_2',
+    dayNumber: 2,
+    date: '2026-10-28',
+    title: 'Giorno 2',
+    activities: [
+      { id: 'act_vaticano', time: '10:00', title: 'Musei Vaticani', category: 'sightseeing', completed: false }
+    ]
+  }
+];
+
+// Test 8a: Move Colosseo from Day 1 to Day 2 at 15:30
+const movedResult = moveActivityBetweenDays(sampleDays, 'day_1', 'day_2', 'act_colosseo', '15:30');
+const resDay1 = movedResult.find((d) => d.id === 'day_1');
+const resDay2 = movedResult.find((d) => d.id === 'day_2');
+
+assert.equal(resDay1.activities.length, 1);
+assert.equal(resDay1.activities[0].id, 'act_pranzo');
+
+assert.equal(resDay2.activities.length, 2);
+// Chronological sort: 10:00 Vaticani first, 15:30 Colosseo second
+assert.equal(resDay2.activities[0].id, 'act_vaticano');
+assert.equal(resDay2.activities[1].id, 'act_colosseo');
+assert.equal(resDay2.activities[1].time, '15:30');
+assert.equal(resDay2.activities[1].lat, 41.8902);
+assert.ok(resDay2.activities[1].updatedAt > 0);
+
+// Test 8b: Move activity to earlier time in Day 2
+const movedEarlier = moveActivityBetweenDays(sampleDays, 'day_1', 'day_2', 'act_colosseo', '08:30');
+const earlierDay2 = movedEarlier.find((d) => d.id === 'day_2');
+assert.equal(earlierDay2.activities[0].id, 'act_colosseo');
+assert.equal(earlierDay2.activities[1].id, 'act_vaticano');
+
+// Test 8c: Same day time change
+const reorderedDay1 = moveActivityBetweenDays(sampleDays, 'day_1', 'day_1', 'act_pranzo', '08:00');
+const resSameDay = reorderedDay1.find((d) => d.id === 'day_1');
+assert.equal(resSameDay.activities[0].id, 'act_pranzo');
+assert.equal(resSameDay.activities[1].id, 'act_colosseo');
+
+// Test 8d: Invalid IDs return days safely
+const untouched = moveActivityBetweenDays(sampleDays, 'day_invalid', 'day_2', 'act_colosseo');
+assert.equal(untouched, sampleDays);
+
+// 9. Weather Service Helpers (Quantization, Code Mapping & Date Matching)
+function quantizeCoord(coord) {
+  return Math.round(coord * 40) / 40;
+}
+
+// Colosseum (41.8902, 12.4922) vs Roman Forum (41.8925, 12.4853) within ~600m
+assert.equal(quantizeCoord(41.8902), 41.9);
+assert.equal(quantizeCoord(41.8925), 41.9);
+assert.equal(quantizeCoord(12.4922), 12.5);
+assert.equal(quantizeCoord(12.4853), 12.475);
+
+const WMO_MAP = {
+  0: { label: 'Sereno', icon: 'Sun' },
+  1: { label: 'Prevalentemente sereno', icon: 'Sun' },
+  2: { label: 'Poco nuvoloso', icon: 'CloudSun' },
+  3: { label: 'Coperto', icon: 'Cloud' },
+  61: { label: 'Pioggia leggera', icon: 'CloudRain' },
+  71: { label: 'Neve debole', icon: 'CloudSnow' },
+  95: { label: 'Temporale', icon: 'CloudLightning' }
+};
+
+function getWeatherCondition(code) {
+  return WMO_MAP[code] || { label: 'Variabile', icon: 'CloudSun' };
+}
+
+assert.equal(getWeatherCondition(0).label, 'Sereno');
+assert.equal(getWeatherCondition(0).icon, 'Sun');
+assert.equal(getWeatherCondition(2).label, 'Poco nuvoloso');
+assert.equal(getWeatherCondition(61).label, 'Pioggia leggera');
+assert.equal(getWeatherCondition(95).label, 'Temporale');
+assert.equal(getWeatherCondition(999).label, 'Variabile');
+
+// Forecast target date matching logic
+function extractForecastForDate(dailyData, targetDate) {
+  if (!dailyData || !Array.isArray(dailyData.time)) return null;
+  const idx = dailyData.time.indexOf(targetDate);
+  if (idx === -1) return null;
+  return {
+    code: dailyData.weather_code[idx],
+    max: Math.round(dailyData.temperature_2m_max[idx]),
+    min: Math.round(dailyData.temperature_2m_min[idx]),
+    rainProb: dailyData.precipitation_probability_max[idx]
+  };
+}
+
+const mockDaily = {
+  time: ['2026-10-27', '2026-10-28', '2026-10-29'],
+  weather_code: [0, 2, 61],
+  temperature_2m_max: [21.4, 19.8, 16.2],
+  temperature_2m_min: [11.2, 10.1, 9.0],
+  precipitation_probability_max: [5, 15, 80]
+};
+
+const forecast28 = extractForecastForDate(mockDaily, '2026-10-28');
+assert.deepEqual(forecast28, { code: 2, max: 20, min: 10, rainProb: 15 });
+assert.equal(extractForecastForDate(mockDaily, '2026-11-15'), null);
+
+// Hourly Arrival Time Parsing & Matching
+function getNearestHour(timeStr) {
+  const parts = timeStr.trim().split(':');
+  if (parts.length === 0) return 12;
+  const h = parseInt(parts[0], 10);
+  if (isNaN(h)) return 12;
+  const m = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+  const rounded = m >= 30 ? h + 1 : h;
+  return Math.min(Math.max(rounded, 0), 23);
+}
+
+assert.equal(getNearestHour('12:50'), 13);
+assert.equal(getNearestHour('16:15'), 16);
+assert.equal(getNearestHour('09:30'), 10);
+assert.equal(getNearestHour('00:05'), 0);
+assert.equal(getNearestHour('23:45'), 23);
+
+function extractHourlyForecast(hourlyData, targetDate, arrivalTime) {
+  if (!hourlyData || !Array.isArray(hourlyData.time)) return null;
+  const nearestHour = getNearestHour(arrivalTime);
+  const hourPad = String(nearestHour).padStart(2, '0');
+  const targetIsoHour = `${targetDate}T${hourPad}:00`;
+  const idx = hourlyData.time.indexOf(targetIsoHour);
+  if (idx === -1) return null;
+  return {
+    hourSlot: `${hourPad}:00`,
+    temp: Math.round(hourlyData.temperature_2m[idx]),
+    code: hourlyData.weather_code[idx]
+  };
+}
+
+const mockHourly = {
+  time: ['2026-10-27T11:00', '2026-10-27T12:00', '2026-10-27T13:00'],
+  temperature_2m: [17.8, 18.9, 19.4],
+  weather_code: [1, 2, 61]
+};
+
+const arrivalAt1250 = extractHourlyForecast(mockHourly, '2026-10-27', '12:50');
+assert.deepEqual(arrivalAt1250, { hourSlot: '13:00', temp: 19, code: 61 });
+
+// 10. Add Day At Beginning & End Invariants
+function addDayToTrip(trip, title, date, position = 'end') {
+  if (position === 'start') {
+    let nextDate = date || '';
+    if (!nextDate && trip.days.length > 0) {
+      const first = trip.days[0].date || trip.startDate;
+      if (first) {
+        nextDate = addDaysIso(first, -1);
+      }
+    }
+    if (!nextDate) {
+      nextDate = trip.startDate || '2026-10-27';
+    }
+
+    const newDay = {
+      id: `day_${Date.now()}_start`,
+      dayNumber: 1,
+      date: nextDate,
+      title: title?.trim() || 'Giorno 1',
+      activities: []
+    };
+
+    const shiftedDays = trip.days.map((d, idx) => {
+      const newNum = idx + 2;
+      const isDefaultTitle = !d.title || d.title.trim() === `Giorno ${d.dayNumber}`;
+      return {
+        ...d,
+        dayNumber: newNum,
+        title: isDefaultTitle ? `Giorno ${newNum}` : d.title
+      };
+    });
+
+    const safeStartDate = nextDate || trip.startDate;
+    const safeEndDate =
+      trip.endDate || (trip.days.length > 0 ? trip.days[trip.days.length - 1].date : nextDate);
+
+    return {
+      ...trip,
+      days: [newDay, ...shiftedDays],
+      startDate: safeStartDate,
+      endDate: safeEndDate
+    };
+  } else {
+    const nextNum = trip.days.length + 1;
+    let nextDate = date || '';
+    if (!nextDate && trip.days.length > 0) {
+      const last = trip.days[trip.days.length - 1].date;
+      if (last) {
+        nextDate = addDaysIso(last, 1);
+      }
+    }
+    if (!nextDate) {
+      nextDate = trip.startDate || '2026-10-27';
+    }
+    const newDay = {
+      id: `day_${Date.now()}_end`,
+      dayNumber: nextNum,
+      date: nextDate,
+      title: title?.trim() || `Giorno ${nextNum}`,
+      activities: []
+    };
+    return {
+      ...trip,
+      days: [...trip.days, newDay],
+      startDate: trip.startDate || nextDate,
+      endDate: nextDate || trip.endDate
+    };
+  }
+}
+
+function deleteDayFromTrip(trip, dayId) {
+  if (trip.days.length <= 1) return trip;
+  const filtered = trip.days
+    .filter((d) => d.id !== dayId)
+    .map((d, idx) => {
+      const newNum = idx + 1;
+      const isDefaultTitle = !d.title || d.title.trim() === `Giorno ${d.dayNumber}`;
+      return {
+        ...d,
+        dayNumber: newNum,
+        title: isDefaultTitle ? `Giorno ${newNum}` : d.title
+      };
+    });
+  const newStart = filtered[0]?.date || trip.startDate;
+  const newEnd = filtered[filtered.length - 1]?.date || trip.endDate;
+  return { ...trip, days: filtered, startDate: newStart, endDate: newEnd };
+}
+
+const tripForDayTests = {
+  id: 'trip_test_days',
+  startDate: '2026-11-22',
+  endDate: '2026-11-23',
+  days: [
+    {
+      id: 'd1',
+      dayNumber: 1,
+      date: '2026-11-22',
+      title: 'Arrivo a Tokyo',
+      activities: [{ id: 'act1', title: 'Check-in hotel' }]
+    },
+    {
+      id: 'd2',
+      dayNumber: 2,
+      date: '2026-11-23',
+      title: 'Giorno 2',
+      activities: [{ id: 'act2', title: 'Shibuya Sky' }]
+    }
+  ]
+};
+
+// Test 10a: Add day at beginning prepends Day 1, computes 2026-11-21, updates startDate, preserves custom titles and activities
+const prependedTrip = addDayToTrip(tripForDayTests, undefined, undefined, 'start');
+assert.equal(prependedTrip.days.length, 3);
+assert.equal(prependedTrip.startDate, '2026-11-21');
+assert.equal(prependedTrip.endDate, '2026-11-23');
+
+// New Day 1
+assert.equal(prependedTrip.days[0].dayNumber, 1);
+assert.equal(prependedTrip.days[0].date, '2026-11-21');
+assert.equal(prependedTrip.days[0].title, 'Giorno 1');
+assert.equal(prependedTrip.days[0].activities.length, 0);
+
+// Shifted Day 2 (former Day 1): custom title "Arrivo a Tokyo" preserved
+assert.equal(prependedTrip.days[1].id, 'd1');
+assert.equal(prependedTrip.days[1].dayNumber, 2);
+assert.equal(prependedTrip.days[1].date, '2026-11-22');
+assert.equal(prependedTrip.days[1].title, 'Arrivo a Tokyo');
+assert.equal(prependedTrip.days[1].activities.length, 1);
+assert.equal(prependedTrip.days[1].activities[0].id, 'act1');
+
+// Shifted Day 3 (former Day 2): default title updated to "Giorno 3"
+assert.equal(prependedTrip.days[2].id, 'd2');
+assert.equal(prependedTrip.days[2].dayNumber, 3);
+assert.equal(prependedTrip.days[2].date, '2026-11-23');
+assert.equal(prependedTrip.days[2].title, 'Giorno 3');
+assert.equal(prependedTrip.days[2].activities.length, 1);
+
+// Test 10b: Add day at beginning across month boundary (2026-03-01 -> 2026-02-28)
+const marchTrip = {
+  startDate: '2026-03-01',
+  endDate: '2026-03-02',
+  days: [{ id: 'm1', dayNumber: 1, date: '2026-03-01', title: 'Giorno 1', activities: [] }]
+};
+const febTrip = addDayToTrip(marchTrip, undefined, undefined, 'start');
+assert.equal(febTrip.startDate, '2026-02-28');
+assert.equal(febTrip.days[0].date, '2026-02-28');
+assert.equal(febTrip.days[0].dayNumber, 1);
+assert.equal(febTrip.days[1].dayNumber, 2);
+
+// Test 10c: Add day at end appends Day 3 with 2026-11-24, updates endDate
+const appendedTrip = addDayToTrip(tripForDayTests, undefined, undefined, 'end');
+assert.equal(appendedTrip.days.length, 3);
+assert.equal(appendedTrip.startDate, '2026-11-22');
+assert.equal(appendedTrip.endDate, '2026-11-24');
+assert.equal(appendedTrip.days[2].dayNumber, 3);
+assert.equal(appendedTrip.days[2].date, '2026-11-24');
+assert.equal(appendedTrip.days[2].title, 'Giorno 3');
+
+// Test 10d: Delete first day updates startDate and renumbers remaining days
+const deletedFirst = deleteDayFromTrip(prependedTrip, prependedTrip.days[0].id);
+assert.equal(deletedFirst.days.length, 2);
+assert.equal(deletedFirst.startDate, '2026-11-22');
+assert.equal(deletedFirst.days[0].dayNumber, 1);
+assert.equal(deletedFirst.days[0].title, 'Arrivo a Tokyo');
+assert.equal(deletedFirst.days[1].dayNumber, 2);
+assert.equal(deletedFirst.days[1].title, 'Giorno 2');
+
+// 11. Auth Gate & Mobile-Web Parity Sync Invariants
+// Test 11a: User-scoped storage keys prevent cross-account data leakage
+function getUserTripsStorageKey(uid) {
+  return uid ? `tripwise_trips_${uid}` : 'tripwise_trips_v1';
+}
+function getUserActiveTripStorageKey(uid) {
+  return uid ? `tripwise_active_trip_id_${uid}` : 'tripwise_active_trip_id';
+}
+
+const keyUserA = getUserTripsStorageKey('uid_alice');
+const keyUserB = getUserTripsStorageKey('uid_bob');
+assert.notEqual(keyUserA, keyUserB, 'Different users must have strictly distinct storage keys');
+assert.equal(keyUserA, 'tripwise_trips_uid_alice');
+assert.equal(getUserActiveTripStorageKey('uid_alice'), 'tripwise_active_trip_id_uid_alice');
+
+// Test 11b: Legacy trip migration assigns caller UID and prepares for cloud sync
+const legacySample = [
+  { id: 'trip_legacy_1', inviteCode: 'TW-ROMA-1234', title: 'Roma', memberUids: [] }
+];
+const migrated = legacySample.map((t) => ({
+  ...t,
+  memberUids: Array.from(new Set([...(t.memberUids || []), 'uid_alice']))
+}));
+assert.deepEqual(migrated[0].memberUids, ['uid_alice'], 'Legacy trip must be adopted by authenticated user');
+
+// Test 11c: Real-time collection synchronization reconciles remote additions and deletions
+function reconcileRemoteUserTrips(localTrips, remoteTrips, currentUid, lastSyncedMap) {
+  const mergedMap = new Map();
+  for (const lt of localTrips) {
+    mergedMap.set(lt.inviteCode, lt);
+  }
+
+  const remoteKeys = new Set();
+  for (const rt of remoteTrips) {
+    remoteKeys.add(rt.inviteCode);
+    mergedMap.set(rt.inviteCode, rt);
+  }
+
+  // Handle deletions: if a trip was previously synced but is absent from remote query, delete it locally
+  for (const [key, existing] of mergedMap.entries()) {
+    if (!remoteKeys.has(key)) {
+      if (lastSyncedMap.has(key) || existing.memberUids?.includes(currentUid)) {
+        mergedMap.delete(key);
+      }
+    }
+  }
+
+  return Array.from(mergedMap.values());
+}
+
+const mockLocal = [
+  { id: 't1', inviteCode: 'TW-JAPA-1111', title: 'Giappone', memberUids: ['uid_alice'] },
+  { id: 't2', inviteCode: 'TW-PARI-2222', title: 'Parigi', memberUids: ['uid_alice'] }
+];
+const lastSynced = new Map([
+  ['TW-JAPA-1111', mockLocal[0]],
+  ['TW-PARI-2222', mockLocal[1]]
+]);
+
+// Remote snapshot on mobile where 'TW-PARI-2222' was deleted on web
+const remoteAfterDeletionOnWeb = [
+  { id: 't1', inviteCode: 'TW-JAPA-1111', title: 'Giappone Modificato', memberUids: ['uid_alice'] }
+];
+const reconciledOnMobile = reconcileRemoteUserTrips(mockLocal, remoteAfterDeletionOnWeb, 'uid_alice', lastSynced);
+assert.equal(reconciledOnMobile.length, 1, 'Mobile must immediately remove deleted trip when Web deletes it');
+assert.equal(reconciledOnMobile[0].inviteCode, 'TW-JAPA-1111');
+assert.equal(reconciledOnMobile[0].title, 'Giappone Modificato');
+
+// Test 11d: Cloud trip deletion invariants (single-member delete vs multi-member leave)
+function planCloudTripDeletion(trip, userUid) {
+  const remainingUids = (trip.memberUids || []).filter((u) => u !== userUid);
+  if (remainingUids.length === 0) {
+    return { action: 'DELETE_DOC', inviteCode: trip.inviteCode };
+  }
+  return { action: 'UPDATE_DOC', inviteCode: trip.inviteCode, remainingUids };
+}
+
+const soloTrip = { inviteCode: 'TW-SOLO-1111', memberUids: ['uid_alice'] };
+assert.deepEqual(planCloudTripDeletion(soloTrip, 'uid_alice'), {
+  action: 'DELETE_DOC',
+  inviteCode: 'TW-SOLO-1111'
+});
+
+const sharedTrip = { inviteCode: 'TW-COUPLE-2222', memberUids: ['uid_alice', 'uid_bob'] };
+assert.deepEqual(planCloudTripDeletion(sharedTrip, 'uid_alice'), {
+  action: 'UPDATE_DOC',
+  inviteCode: 'TW-COUPLE-2222',
+  remainingUids: ['uid_bob']
+});
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity)');

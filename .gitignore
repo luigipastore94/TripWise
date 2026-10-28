@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+.firebase/
+*.log
+edge_*.txt
+android/app/build
+android/app/google-services.json
+android/.gradle
+android/local.properties

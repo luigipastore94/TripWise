@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TripWise</string>
+    <string name="title_activity_main">TripWise</string>
+    <string name="package_name">com.tripwise.companion</string>
+    <string name="custom_url_scheme">com.tripwise.companion</string>
+</resources>

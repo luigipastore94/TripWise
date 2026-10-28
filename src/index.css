@@ -1,0 +1,113 @@
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+  accent-color: #4f46e5;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
+}
+
+dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+/* Native form control accessibility & Fitts's Law touch ergonomics */
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 1rem;
+    min-height: 48px;
+  }
+
+  @media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      min-height: 52px;
+    }
+  }
+
+  input:invalid:user-invalid,
+  select:invalid:user-invalid,
+  textarea:invalid:user-invalid {
+    border-color: #ef4444;
+    outline-color: #ef4444;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+
+/* Modern Web Guidance (`form-fields-automatically-fit-contents`): vertical auto-sizing textarea without horizontal layout shift */
+.auto-grow-textarea {
+  field-sizing: content;
+  width: 100%;
+  height: auto;
+  min-block-size: 7lh;
+  max-block-size: 16lh;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* CRITICAL: Protect Leaflet tiles & markers from Tailwind Preflight `img { max-width: 100%; height: auto }` */
+.leaflet-container {
+  font-family: inherit;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+  background-color: #e2e8f0;
+  overscroll-behavior: contain;
+}
+
+.leaflet-container.tripwise-pick-mode {
+  cursor: crosshair !important;
+}
+
+.leaflet-container img,
+.leaflet-container .leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  padding: 2px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+}
+
+.leaflet-popup-content {
+  margin: 12px 14px;
+  line-height: 1.4;
+}
+
+.tripwise-pin {
+  background: transparent !important;
+  border: none !important;
+}
