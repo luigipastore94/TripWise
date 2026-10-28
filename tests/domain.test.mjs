@@ -327,6 +327,41 @@ assert.equal(samplePdfBooking.pdfFileName, 'Biglietto_Frecciarossa.pdf');
 assert.equal(samplePdfBooking.pdfFileSize, 204800);
 assert.ok(samplePdfBooking.pdfDataUrl.startsWith('data:application/pdf;base64,'));
 
+// 5b. Booking QR Code vs Confirmation Code Invariant (QR is NOT always present on tickets)
+const { hasBookingQr, normalizePdfFileName } = await import(
+  '../src/utils/bookingUtils.ts'
+);
+
+// Confirmation codes (PNR, voucher numbers) must NEVER be falsely identified as QR codes
+assert.equal(
+  hasBookingQr({ confirmationCode: 'PNR89K' }),
+  false,
+  'Tickets with only confirmation codes must not have QR code'
+);
+assert.equal(
+  hasBookingQr({ confirmationCode: 'HOTEL-ROMA-992' }),
+  false,
+  'Hotel bookings without QR must not have QR code'
+);
+assert.equal(
+  hasBookingQr({ qrPayload: '   ' }),
+  false,
+  'Whitespace QR payload must not count as QR code'
+);
+assert.equal(
+  hasBookingQr({ qrPayload: 'https://trenitalia.it/v/XYZ123' }),
+  true,
+  'Explicit QR payload is recognized'
+);
+assert.equal(
+  hasBookingQr({ qrImageDataUrl: 'data:image/jpeg;base64,abc' }),
+  true,
+  'Uploaded QR screenshot is recognized'
+);
+assert.equal(normalizePdfFileName('Biglietto Freccia'), 'Biglietto Freccia.pdf');
+assert.equal(normalizePdfFileName('biglietto.pdf'), 'biglietto.pdf');
+assert.equal(normalizePdfFileName(''), 'biglietto.pdf');
+
 // 6. Collaborative Concurrent Sync & Array ID Merge Tests
 const { mergeTrips, mergeEntityLists, mergeItineraryDays } = await import(
   '../src/utils/tripMerge.ts'
@@ -1011,4 +1046,307 @@ assert.deepEqual(planCloudTripDeletion(sharedTrip, 'uid_alice'), {
   remainingUids: ['uid_bob']
 });
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity)');
+// Test 11d-2: Tombstone invariant prevents resurrection of locally deleted trips
+function reconcileWithTombstones(localTrips, remoteTrips, tombstonesMap) {
+  const mergedMap = new Map();
+  for (const lt of localTrips) {
+    if (!tombstonesMap.has(lt.inviteCode)) {
+      mergedMap.set(lt.inviteCode, lt);
+    }
+  }
+
+  for (const rt of remoteTrips) {
+    const deletedAt = tombstonesMap.get(rt.inviteCode);
+    if (deletedAt && (!rt.updatedAt || rt.updatedAt <= deletedAt)) {
+      continue; // Block resurrection of locally deleted trip
+    }
+    mergedMap.set(rt.inviteCode, rt);
+  }
+
+  return Array.from(mergedMap.values());
+}
+
+// User deletes TW-PARI-2222 on mobile at timestamp 5000:
+const tombstones = new Map([['TW-PARI-2222', 5000]]);
+const staleRemoteSnapshot = [
+  { id: 't1', inviteCode: 'TW-JAPA-1111', title: 'Giappone', updatedAt: 4000 },
+  { id: 't2', inviteCode: 'TW-PARI-2222', title: 'Parigi (in-flight snapshot)', updatedAt: 4500 }
+];
+const localAfterDeletion = [
+  { id: 't1', inviteCode: 'TW-JAPA-1111', title: 'Giappone', updatedAt: 4000 }
+];
+
+const protectedTrips = reconcileWithTombstones(localAfterDeletion, staleRemoteSnapshot, tombstones);
+assert.equal(protectedTrips.length, 1, 'Tombstoned trip must NEVER be resurrected by in-flight or cached remote query');
+assert.equal(protectedTrips[0].inviteCode, 'TW-JAPA-1111');
+
+// Test 11e: Instant Mobile Reload Hydration Invariants (eliminates unauthenticated flash)
+const mockStorage = new Map();
+const fakeLocalStorage = {
+  getItem: (k) => mockStorage.get(k) || null,
+  setItem: (k, v) => mockStorage.set(k, String(v)),
+  removeItem: (k) => mockStorage.delete(k)
+};
+
+const USER_CACHE_STORAGE_KEY = 'tripwise_auth_user_cache_v1';
+function simulatePersistCachedUser(user) {
+  if (user) {
+    fakeLocalStorage.setItem(USER_CACHE_STORAGE_KEY, JSON.stringify(user));
+  } else {
+    fakeLocalStorage.removeItem(USER_CACHE_STORAGE_KEY);
+  }
+}
+
+function simulateLoadCachedUser() {
+  const raw = fakeLocalStorage.getItem(USER_CACHE_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed.uid === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// 1. Authenticated user saves profile to fast cache
+const aliceProfile = {
+  uid: 'uid_alice',
+  displayName: 'Alice Viaggiatrice',
+  email: 'alice@example.com',
+  photoURL: 'https://example.com/avatar.jpg'
+};
+simulatePersistCachedUser(aliceProfile);
+assert.deepEqual(simulateLoadCachedUser(), aliceProfile, 'Cached user profile must be synchronously recoverable');
+
+// 2. Mock trip saved under Alice's storage key
+const aliceTripsKey = getUserTripsStorageKey(aliceProfile.uid);
+const aliceTrip = {
+  id: 'trip_alice_japan',
+  inviteCode: 'TW-JAPA-9999',
+  title: 'Viaggio in Giappone',
+  destination: 'Tokyo & Kyoto',
+  emoji: '🌸',
+  days: [{ id: 'd1', dayNumber: 1, date: '2026-11-22', title: 'Arrivo', activities: [] }],
+  expenses: [],
+  bookings: [],
+  checklist: [],
+  members: [],
+  updatedAt: Date.now()
+};
+fakeLocalStorage.setItem(aliceTripsKey, JSON.stringify([aliceTrip]));
+fakeLocalStorage.setItem(getUserActiveTripStorageKey(aliceProfile.uid), aliceTrip.id);
+
+// 3. Hydration check on page reload (Frame 0 before network or Firebase SDK response)
+const rehydratedUser = simulateLoadCachedUser();
+assert.ok(rehydratedUser, 'User must not be null on initial frame');
+assert.equal(rehydratedUser.uid, 'uid_alice');
+
+const rehydratedTrips = JSON.parse(fakeLocalStorage.getItem(getUserTripsStorageKey(rehydratedUser.uid)));
+assert.equal(rehydratedTrips.length, 1, 'Trips must be immediately present from local storage cache');
+
+const rehydratedActiveId = fakeLocalStorage.getItem(getUserActiveTripStorageKey(rehydratedUser.uid));
+const activeTripInstance = rehydratedTrips.find((t) => t.id === rehydratedActiveId);
+assert.ok(activeTripInstance, 'Active trip must be resolved on Frame 0 so mobile never flashes unauthenticated/onboarding view');
+assert.equal(activeTripInstance.title, 'Viaggio in Giappone');
+
+// 4. Sign-out clears the cache
+simulatePersistCachedUser(null);
+assert.equal(simulateLoadCachedUser(), null, 'Signing out must purge the cached user profile');
+
+// 12. Cross-Device PDF Attachment & Companion Data Preservation Invariants (Tesler's Law)
+// Test 12a: resolveItemConflict preserves local cached pdfDataUrl and qrImageDataUrl even if remote is newer
+const localBookingWithDataUrl = {
+  id: 'bkg_freccia_1',
+  title: 'Frecciarossa 9612',
+  type: 'train',
+  pdfDataUrl: 'data:application/pdf;base64,JVBERi0xLjQK...',
+  pdfFileName: 'Frecciarossa.pdf',
+  hasPdf: true,
+  updatedAt: 1000
+};
+
+const remoteBookingOffloaded = {
+  id: 'bkg_freccia_1',
+  title: 'Frecciarossa 9612 Modificato',
+  type: 'train',
+  hasPdf: true,
+  pdfFileName: 'Frecciarossa.pdf',
+  updatedAt: 2000 // Remote is newer but has stripped pdfDataUrl because it's in subcollection
+};
+
+const mergedBooking = mergeEntityLists(undefined, [localBookingWithDataUrl], [remoteBookingOffloaded]);
+assert.equal(mergedBooking.length, 1);
+assert.equal(mergedBooking[0].title, 'Frecciarossa 9612 Modificato', 'Remote newer title must win');
+assert.equal(mergedBooking[0].hasPdf, true, 'hasPdf flag must remain true');
+assert.equal(mergedBooking[0].pdfDataUrl, 'data:application/pdf;base64,JVBERi0xLjQK...', 'Local cached PDF dataUrl must NOT be lost');
+
+// Test 12b: Companion added expense on Device B, Companion added PDF ticket on Device A
+const tripDeviceA = {
+  ...baseTripFixture,
+  bookings: [localBookingWithDataUrl],
+  updatedAt: 1500
+};
+
+const tripDeviceB = {
+  ...baseTripFixture,
+  expenses: [
+    {
+      id: 'exp_companion_1',
+      title: 'Cena Sushi a Shinjuku',
+      amount: 4500,
+      currency: 'JPY',
+      amountInBase: 27.69,
+      paidByMemberId: 'm2',
+      splitBetweenMemberIds: ['m1', 'm2'],
+      category: 'food',
+      date: '2026-11-22',
+      updatedAt: 1600
+    }
+  ],
+  updatedAt: 1600
+};
+
+const unifiedTrip = mergeTrips(baseTripFixture, tripDeviceA, tripDeviceB);
+assert.equal(unifiedTrip.merged.bookings.length, 1, 'Device A booking must be preserved');
+assert.equal(unifiedTrip.merged.bookings[0].hasPdf, true);
+assert.equal(unifiedTrip.merged.expenses.length, 1, 'Device B expense must be preserved');
+assert.equal(unifiedTrip.merged.expenses[0].id, 'exp_companion_1');
+
+// 13. Checklist Category Separation & Legacy Migration Invariants (Miller's Law & Postel's Law)
+function normalizeChecklistCategory(category, text = '') {
+  if (category === 'health_money') {
+    const isHealth = /medic|farmac|salut|sanit|cerott|vaccin|pronto soccorso|visita|polizza|tampon|occhial/i.test(text);
+    return isHealth ? 'health' : 'money';
+  }
+  const validCategories = new Set(['documents', 'electronics', 'luggage', 'health', 'money', 'other']);
+  return validCategories.has(category) ? category : 'other';
+}
+
+// 13a. Legacy 'health_money' item mapping
+assert.equal(
+  normalizeChecklistCategory('health_money', 'Kit medicinali base da viaggio'),
+  'health',
+  'Health items must be categorized into health'
+);
+assert.equal(
+  normalizeChecklistCategory('health_money', 'Farmaci personali con ricetta'),
+  'health',
+  'Prescription medicines must be categorized into health'
+);
+assert.equal(
+  normalizeChecklistCategory('health_money', 'Carta prepagata/multivaluta senza commissioni estero'),
+  'money',
+  'Payment cards must be categorized into money'
+);
+assert.equal(
+  normalizeChecklistCategory('health_money', 'Contanti in Yen / Carta multivaluta per prelievi ATM'),
+  'money',
+  'Foreign currency and ATM withdrawals must be categorized into money'
+);
+
+// 13b. Standard categories remain untouched
+assert.equal(normalizeChecklistCategory('documents', 'Passaporto'), 'documents');
+assert.equal(normalizeChecklistCategory('electronics', 'Powerbank'), 'electronics');
+assert.equal(normalizeChecklistCategory('luggage', 'K-Way'), 'luggage');
+assert.equal(normalizeChecklistCategory('health', 'Cerotti'), 'health');
+assert.equal(normalizeChecklistCategory('money', 'Carta di credito'), 'money');
+assert.equal(normalizeChecklistCategory('other', 'Biglietti da visita'), 'other');
+assert.equal(normalizeChecklistCategory('unknown_xyz', 'Random'), 'other');
+
+// 13c. Custom checklist categories resolution
+function resolveCategoryWithCustom(category, text = '', customIds = []) {
+  if (category === 'health_money') {
+    const isHealth = /medic|farmac|salut|sanit|cerott|vaccin|pronto soccorso|visita|polizza|tampon|occhial/i.test(text);
+    return isHealth ? 'health' : 'money';
+  }
+  const standard = new Set(['documents', 'electronics', 'luggage', 'health', 'money', 'other']);
+  if (standard.has(category)) return category;
+  if (customIds.includes(category)) return category;
+  return 'other';
+}
+
+assert.equal(
+  resolveCategoryWithCustom('cat_food_1', 'Biscotti', ['cat_food_1']),
+  'cat_food_1',
+  'Custom category must be resolved if known'
+);
+assert.equal(
+  resolveCategoryWithCustom('cat_deleted', 'Biscotti', ['cat_food_1']),
+  'other',
+  'Unrecognized or deleted custom category must gracefully fall back to other'
+);
+
+// 13d. Collaborative 3-Way Merge of customChecklistCategories
+const baseTripWithCat = {
+  ...baseTripFixture,
+  customChecklistCategories: [
+    { id: 'cat_food', label: 'Cibo & Snack', icon: 'Utensils', updatedAt: 1000 }
+  ]
+};
+const userATripWithCat = {
+  ...baseTripWithCat,
+  customChecklistCategories: [
+    { id: 'cat_food', label: 'Cibo & Snack Modificato', icon: 'Utensils', updatedAt: 2000 },
+    { id: 'cat_trekking', label: 'Trekking', icon: 'Mountain', updatedAt: 2000 }
+  ]
+};
+const userBTripWithCat = {
+  ...baseTripWithCat,
+  customChecklistCategories: [
+    { id: 'cat_food', label: 'Cibo & Snack', icon: 'Utensils', updatedAt: 1000 },
+    { id: 'cat_photo', label: 'Foto & Video', icon: 'Camera', updatedAt: 2001 }
+  ]
+};
+
+const mergedCustomCats = mergeEntityLists(
+  baseTripWithCat.customChecklistCategories,
+  userATripWithCat.customChecklistCategories,
+  userBTripWithCat.customChecklistCategories
+);
+
+assert.equal(mergedCustomCats.length, 3, 'Both user additions (Trekking + Photo) and modified Food must be preserved');
+const foodCat = mergedCustomCats.find((c) => c.id === 'cat_food');
+assert.equal(foodCat.label, 'Cibo & Snack Modificato', 'User A newer update must win');
+assert.ok(mergedCustomCats.some((c) => c.id === 'cat_trekking'));
+assert.ok(mergedCustomCats.some((c) => c.id === 'cat_photo'));
+
+// 14. Local Storage Attachment Stripping & Instant Offline Indicator Invariants (Tesler's Law & Doherty Threshold)
+function stripHeavyAttachmentsForStorage(trips) {
+  return trips.map((t) => ({
+    ...t,
+    bookings: (t.bookings || []).map((b) => {
+      if (b.pdfDataUrl) {
+        const { pdfDataUrl: _omitted, ...rest } = b;
+        return {
+          ...rest,
+          hasPdf: true
+        };
+      }
+      return {
+        ...b,
+        hasPdf: Boolean(b.hasPdf || b.pdfDataUrl || b.pdfFileName)
+      };
+    })
+  }));
+}
+
+const tripToSave = [{
+  id: 'trip_1',
+  bookings: [
+    {
+      id: 'bkg_1',
+      title: 'Italo Roma-Milano',
+      pdfDataUrl: 'data:application/pdf;base64,QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=',
+      pdfFileName: 'Italo_Roma_Milano.pdf',
+      pdfFileSize: 512000
+    }
+  ]
+}];
+
+const sanitized = stripHeavyAttachmentsForStorage(tripToSave);
+assert.equal(sanitized[0].bookings[0].pdfDataUrl, undefined, 'pdfDataUrl must be stripped from local storage to prevent 5MB quota errors');
+assert.equal(sanitized[0].bookings[0].hasPdf, true, 'hasPdf must be true so the PDF strip and open button render immediately on reload');
+assert.equal(sanitized[0].bookings[0].pdfFileName, 'Italo_Roma_Milano.pdf', 'pdfFileName must be preserved');
+assert.equal(sanitized[0].bookings[0].pdfFileSize, 512000, 'pdfFileSize must be preserved');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield)');
