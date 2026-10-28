@@ -736,11 +736,12 @@ export function runEvaluationHarness() {
     });
 
     // 7. Landmark checks
+    const strip = (s) => (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
     const allActivities = plan.days.flatMap((d) => d.activities);
     for (const lm of bCase.expected.keyLandmarks) {
       const match = allActivities.find((a) =>
-        a.title.toLowerCase().includes(lm.term.toLowerCase()) ||
-        (a.locationName || '').toLowerCase().includes(lm.term.toLowerCase())
+        strip(a.title).includes(strip(lm.term)) ||
+        strip(a.locationName).includes(strip(lm.term))
       );
       if (!match) {
         issues.push(`Missing key landmark: "${lm.term}"`);

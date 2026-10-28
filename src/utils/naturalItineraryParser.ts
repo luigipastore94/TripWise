@@ -27,755 +27,8 @@ export interface ParsedItineraryPlan {
   geocodedCount: number;
 }
 
-interface KnownPlaceEntry {
-  keywords: string[];
-  canonicalName: string;
-  locationName: string;
-  lat: number;
-  lng: number;
-  defaultCategory?: ActivityCategory;
-  defaultTime?: string;
-  notes?: string;
-}
-
-/**
- * Instant offline-ready coordinate & metadata dictionary for popular world & Japan stops,
- * ensuring 0ms pinpoint accuracy even for colloquial queries (e.g. "Universal studio", "MAIKOYA").
- * Any place outside this dictionary is resolved dynamically via OpenStreetMap Photon/Nominatim.
- */
-const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
-  // Tokyo & Kanto
-  {
-    keywords: ['teamlab planets', 'teamlab'],
-    canonicalName: 'teamLab Planets TOKYO',
-    locationName: 'teamLab Planets, Toyosu, Tokyo',
-    lat: 35.6491,
-    lng: 139.7898,
-    defaultCategory: 'sightseeing',
-    notes: 'Museo immersivo digitale a piedi nudi (presentarsi 15 min prima dell’orario prenotato).'
-  },
-  {
-    keywords: ['kamakura'],
-    canonicalName: 'Escursione a Kamakura (Grande Buddha & Templi)',
-    locationName: 'Kotoku-in (Grande Buddha), Kamakura',
-    lat: 35.3167,
-    lng: 139.5357,
-    defaultCategory: 'sightseeing',
-    defaultTime: '09:00',
-    notes: 'Visitare il Grande Buddha (Kotoku-in), Hasedera e il santuario Tsurugaoka Hachimangu.'
-  },
-  {
-    keywords: ['senso-ji', 'sensoji', 'asakusa'],
-    canonicalName: 'Tempio Senso-ji e Nakamise-dori',
-    locationName: 'Asakusa, Tokyo',
-    lat: 35.7148,
-    lng: 139.7967,
-    defaultCategory: 'sightseeing',
-    notes: 'Porta Kaminarimon e shopping tradizionale lungo Nakamise-dori.'
-  },
-  {
-    keywords: ['shibuya'],
-    canonicalName: 'Shibuya Crossing & Hachiko',
-    locationName: 'Shibuya Scramble Crossing, Tokyo',
-    lat: 35.6595,
-    lng: 139.7004,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['meiji', 'harajuku'],
-    canonicalName: 'Santuario Meiji Jingu & Harajuku',
-    locationName: 'Meiji Jingu, Shibuya, Tokyo',
-    lat: 35.6764,
-    lng: 139.6993,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['shinjuku'],
-    canonicalName: 'Shinjuku & Omoide Yokocho',
-    locationName: 'Shinjuku, Tokyo',
-    lat: 35.6938,
-    lng: 139.7034,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['akihabara'],
-    canonicalName: 'Akihabara Electric Town',
-    locationName: 'Akihabara, Tokyo',
-    lat: 35.6984,
-    lng: 139.7731,
-    defaultCategory: 'shopping'
-  },
-  {
-    keywords: ['tsukiji', 'mercato del pesce'],
-    canonicalName: 'Mercato Esterno di Tsukiji (Mercato del Pesce)',
-    locationName: 'Tsukiji Outer Market, Tokyo',
-    lat: 35.6655,
-    lng: 139.7707,
-    defaultCategory: 'food'
-  },
-  {
-    keywords: ['ueno'],
-    canonicalName: 'Parco di Ueno & Ameyoko',
-    locationName: 'Ueno Park, Tokyo',
-    lat: 35.7146,
-    lng: 139.7732,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['ginza'],
-    canonicalName: 'Passeggiata a Ginza',
-    locationName: 'Ginza, Tokyo',
-    lat: 35.6717,
-    lng: 139.7649,
-    defaultCategory: 'shopping'
-  },
-  {
-    keywords: ['odaiba'],
-    canonicalName: 'Baia di Odaiba & Vista Rainbow Bridge',
-    locationName: 'Odaiba Marine Park, Tokyo',
-    lat: 35.6297,
-    lng: 139.7753,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['nikko'],
-    canonicalName: 'Santuario Toshogu a Nikko',
-    locationName: 'Nikko Toshogu, Nikko',
-    lat: 36.7581,
-    lng: 139.5989,
-    defaultCategory: 'sightseeing'
-  },
-  // Fuji / Kawaguchiko
-  {
-    keywords: ['fujikawaguchiko', 'kawaguchiko', 'kawaguchi', 'lago kawaguchi', 'monte fuji', 'mt fuji'],
-    canonicalName: 'Lago Kawaguchiko & Vista Monte Fuji',
-    locationName: 'Fujikawaguchiko, Yamanashi',
-    lat: 35.4982,
-    lng: 138.7686,
-    defaultCategory: 'sightseeing',
-    notes: 'Vista panoramica sul Monte Fuji dal Lago Kawaguchiko / Oishi Park.'
-  },
-  {
-    keywords: ['chureito'],
-    canonicalName: 'Pagoda Chureito (Arakurayama Sengen Park)',
-    locationName: 'Chureito Pagoda, Fujiyoshida',
-    lat: 35.5013,
-    lng: 138.8014,
-    defaultCategory: 'sightseeing',
-    notes: 'Celebre punto panoramico con pagoda a 5 piani e Monte Fuji sullo sfondo.'
-  },
-  // Kyoto, Uji, Nara
-  {
-    keywords: ['fushimi inari'],
-    canonicalName: 'Santuario di Fushimi Inari-taisha',
-    locationName: 'Fushimi Inari-taisha, Kyoto',
-    lat: 34.9671,
-    lng: 135.7727,
-    defaultCategory: 'sightseeing',
-    notes: 'Ideale presto la mattina per percorrere i tunnel di torii rossi senza folla.'
-  },
-  {
-    keywords: ['arashiyama', 'bamboo forest', 'foresta di bambu', 'foresta di bambù'],
-    canonicalName: 'Arashiyama Bamboo Forest',
-    locationName: 'Arashiyama Bamboo Grove, Kyoto',
-    lat: 35.0168,
-    lng: 135.6713,
-    defaultCategory: 'sightseeing',
-    notes: 'Arrivare presto la mattina per la luce migliore tra i bambù e proseguire al tempio Tenryu-ji.'
-  },
-  {
-    keywords: ['kiyomizu-dera', 'kiyomizudera', 'kiyomizu'],
-    canonicalName: 'Tempio Kiyomizu-dera & Sannenzaka',
-    locationName: 'Kiyomizu-dera, Higashiyama, Kyoto',
-    lat: 34.9949,
-    lng: 135.785,
-    defaultCategory: 'sightseeing',
-    notes: 'Terrazza panoramica in legno e discesa tra le vie storiche Sannenzaka e Ninenzaka.'
-  },
-  {
-    keywords: ['maikoya', 'cerimonia del tè', 'cerimonia del te'],
-    canonicalName: 'Cerimonia del tè tradizionale MAIKOYA',
-    locationName: 'MAIKOYA Tea Ceremony, Kyoto',
-    lat: 35.0061,
-    lng: 135.7647,
-    defaultCategory: 'relax',
-    notes: 'Esperienza autentica della cerimonia del tè giapponese con preparazione matcha.'
-  },
-  {
-    keywords: ['kinkaku-ji', 'kinkakuji', 'padiglione d’oro', "padiglione d'oro"],
-    canonicalName: 'Kinkaku-ji (Padiglione d’Oro)',
-    locationName: 'Kinkaku-ji, Kyoto',
-    lat: 35.0394,
-    lng: 135.7292,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['gion'],
-    canonicalName: 'Quartiere storico di Gion & Hanamikoji',
-    locationName: 'Gion, Kyoto',
-    lat: 35.0037,
-    lng: 135.7785,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['nishiki'],
-    canonicalName: 'Mercato di Nishiki ("La cucina di Kyoto")',
-    locationName: 'Nishiki Market, Kyoto',
-    lat: 35.005,
-    lng: 135.7649,
-    defaultCategory: 'food'
-  },
-  {
-    keywords: ['uji'],
-    canonicalName: 'Uji: Tempio Byodo-in & Degustazione Matcha',
-    locationName: 'Byodo-in, Uji, Kyoto',
-    lat: 34.8893,
-    lng: 135.8077,
-    defaultCategory: 'sightseeing',
-    notes: 'Lungo la linea JR Nara tra Kyoto e Nara; patria del tè verde Matcha pregiato.'
-  },
-  {
-    keywords: ['nara'],
-    canonicalName: 'Parco di Nara & Grande Buddha del Todai-ji',
-    locationName: 'Nara Park & Todai-ji, Nara',
-    lat: 34.6851,
-    lng: 135.843,
-    defaultCategory: 'sightseeing',
-    notes: 'Cervi sacri in libertà, tempio Todai-ji e lanterne di Kasuga Taisha.'
-  },
-  // Hiroshima, Miyajima, Himeji
-  {
-    keywords: ['miyajima', 'itsukushima'],
-    canonicalName: 'Isola di Miyajima & Santuario di Itsukushima',
-    locationName: 'Itsukushima Shrine, Miyajima',
-    lat: 34.296,
-    lng: 132.3198,
-    defaultCategory: 'sightseeing',
-    notes: 'Grande Torii galleggiante, Monte Misen e vista magica al tramonto.'
-  },
-  {
-    keywords: ['castello di himeji', 'himeji castle', 'himeji'],
-    canonicalName: 'Castello di Himeji (Airone Bianco)',
-    locationName: 'Himeji Castle, Himeji',
-    lat: 34.8394,
-    lng: 134.6939,
-    defaultCategory: 'sightseeing',
-    notes: 'Capolavoro originale UNESCO lungo la tratta Shinkansen tra Hiroshima e Osaka (deposito bagagli in stazione).'
-  },
-  // Osaka
-  {
-    keywords: ['universal studio', 'universal studios', 'usj'],
-    canonicalName: 'Universal Studios Japan (USJ)',
-    locationName: 'Universal Studios Japan, Osaka',
-    lat: 34.6654,
-    lng: 135.4323,
-    defaultCategory: 'sightseeing',
-    defaultTime: '08:30',
-    notes: 'Super Nintendo World e Wizarding World of Harry Potter (arrivare prima dell’apertura).'
-  },
-  {
-    keywords: ['dotonbori'],
-    canonicalName: 'Dotonbori & Insegna Glico',
-    locationName: 'Dotonbori, Namba, Osaka',
-    lat: 34.6687,
-    lng: 135.5013,
-    defaultCategory: 'food',
-    notes: 'Takoyaki, okonomiyaki e luci al neon lungo il canale.'
-  },
-  {
-    keywords: ['castello di osaka', 'osaka castle'],
-    canonicalName: 'Castello di Osaka & Parco',
-    locationName: 'Osaka Castle, Osaka',
-    lat: 34.6873,
-    lng: 135.5262,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['kuromon'],
-    canonicalName: 'Mercato di Kuromon Ichiba',
-    locationName: 'Kuromon Market, Osaka',
-    lat: 34.6654,
-    lng: 135.5065,
-    defaultCategory: 'food'
-  },
-  // Additional Tokyo landmarks
-  {
-    keywords: ['shinjuku gyoen', 'shinjuku goyen', 'parco foliage'],
-    canonicalName: 'Parco Shinjuku Gyoen (Foliage & Giardini)',
-    locationName: 'Shinjuku Gyoen National Garden, Tokyo',
-    lat: 35.6852,
-    lng: 139.7101,
-    defaultCategory: 'sightseeing',
-    notes: 'Meravigliosi giardini tradizionali, serre botaniche e foliage d’autunno.'
-  },
-  {
-    keywords: ['gatto 3d', 'shinjuku gatto', 'cross shinjuku'],
-    canonicalName: 'Cross Shinjuku Vision (Gatto 3D)',
-    locationName: 'Cross Shinjuku Vision, Shinjuku East Exit, Tokyo',
-    lat: 35.6923,
-    lng: 139.7011,
-    defaultCategory: 'sightseeing',
-    notes: 'Celebre maxischermo 3D con il gatto calico gigante.'
-  },
-  {
-    keywords: ['meigetsu-in', 'meigetsuin'],
-    canonicalName: 'Tempio Meigetsu-in (Foliage & Finestra Circolare)',
-    locationName: 'Meigetsu-in, Kamakura',
-    lat: 35.3347,
-    lng: 139.5539,
-    defaultCategory: 'sightseeing',
-    notes: 'Famosa finestra circolare aperta sul giardino posteriore e foliage tardivo.'
-  },
-  {
-    keywords: ['statua della libert', 'lungomare odaiba'],
-    canonicalName: 'Statua della Libertà & Lungomare di Odaiba',
-    locationName: 'Odaiba Seaside Park, Minato, Tokyo',
-    lat: 35.6288,
-    lng: 139.7717,
-    defaultCategory: 'sightseeing',
-    notes: 'Replica della Statua della Libertà con sfondo sul Rainbow Bridge e skyline.'
-  },
-  {
-    keywords: ['rapponigi', 'roppongi', 'viale luci natale', 'keyakizaka'],
-    canonicalName: 'Roppongi Hills & Luminarie Natalizie di Keyakizaka',
-    locationName: 'Roppongi Hills, Minato, Tokyo',
-    lat: 35.6596,
-    lng: 139.7295,
-    defaultCategory: 'sightseeing',
-    notes: 'Viale illuminato a festa con vista suggestiva sulla Tokyo Tower illuminata.'
-  },
-  {
-    keywords: ['palazzo imperiale', 'kokyo', 'imperial palace'],
-    canonicalName: 'Palazzo Imperiale di Tokyo & Giardini Est',
-    locationName: 'Tokyo Imperial Palace, Chiyoda, Tokyo',
-    lat: 35.6852,
-    lng: 139.7528,
-    defaultCategory: 'sightseeing',
-    notes: 'Residenza ufficiale dell’Imperatore con ponti Nijubashi e ampi giardini storici.'
-  },
-  {
-    keywords: ['sky-tree', 'skytree', 'tokyo sky tree'],
-    canonicalName: 'Tokyo Skytree (Torre Panoramica)',
-    locationName: 'Tokyo Skytree, Oshiage, Sumida, Tokyo',
-    lat: 35.71,
-    lng: 139.8107,
-    defaultCategory: 'sightseeing',
-    notes: 'La torre per telecomunicazioni più alta al mondo (634 m) con vista al tramonto.'
-  },
-  // Additional Monte Fuji / 5 Laghi landmarks
-  {
-    keywords: ['momiji corridor', 'tunnel di aceri', 'momiji kairo'],
-    canonicalName: 'Momiji Corridor (Tunnel di Aceri sul Lago Kawaguchiko)',
-    locationName: 'Momiji Kairo, Fujikawaguchiko, Yamanashi',
-    lat: 35.5268,
-    lng: 138.7615,
-    defaultCategory: 'sightseeing',
-    notes: 'Canale fiancheggiato da aceri centenari che in autunno formano un tunnel rosso fuoco.'
-  },
-  // Additional Kyoto landmarks
-  {
-    keywords: ['kodai-ji', 'kodaiji'],
-    canonicalName: 'Tempio Kodai-ji & Boschetto di Bambù',
-    locationName: 'Kodai-ji, Higashiyama, Kyoto',
-    lat: 35.0003,
-    lng: 135.7818,
-    defaultCategory: 'sightseeing',
-    notes: 'Fondato nel 1606 con giardini zen e padiglioni del tè.'
-  },
-  {
-    keywords: ['yasaka', 'santuario yasaka'],
-    canonicalName: 'Santuario Yasaka Jingu',
-    locationName: 'Yasaka Shrine, Gion, Kyoto',
-    lat: 35.0037,
-    lng: 135.7785,
-    defaultCategory: 'sightseeing',
-    notes: 'Cuore spirituale di Gion con centinaia di lanterne votive accese alla sera.'
-  },
-  {
-    keywords: ['ryoan-ji', 'ryoanji', 'giardino zen'],
-    canonicalName: 'Tempio Ryoan-ji (Giardino Zen di Rocce)',
-    locationName: 'Ryoan-ji, Ukyo, Kyoto',
-    lat: 35.0345,
-    lng: 135.7182,
-    defaultCategory: 'sightseeing',
-    notes: 'Il più celebre kare-sansui del mondo con 15 pietre disposte su ghiaia rastrellata.'
-  },
-  {
-    keywords: ['eikan-do', 'eikando'],
-    canonicalName: 'Tempio Eikan-do Zenrin-ji (Illuminazione Foliage Serale)',
-    locationName: 'Eikan-do Zenrin-ji, Sakyo, Kyoto',
-    lat: 35.0144,
-    lng: 135.7954,
-    defaultCategory: 'sightseeing',
-    notes: 'Capitale del foliage autunnale a Kyoto con suggestiva illuminazione serale dei ponti e dello stagno.'
-  },
-  {
-    keywords: ['sagano romantic train', 'treno panoramico sagano', 'sagano scenic railway'],
-    canonicalName: 'Treno Panoramico Sagano (Sagano Romantic Train)',
-    locationName: 'Torokko Saga Station, Arashiyama, Kyoto',
-    lat: 35.0182,
-    lng: 135.6811,
-    defaultCategory: 'transport',
-    notes: 'Corsa panoramica sul treno d’epoca lungo la gola del fiume Hozu.'
-  },
-  {
-    keywords: ['tenryu-ji', 'tenryuji'],
-    canonicalName: 'Tempio Tenryu-ji & Giardino Sogenchi',
-    locationName: 'Tenryu-ji, Arashiyama, Kyoto',
-    lat: 35.0158,
-    lng: 135.6776,
-    defaultCategory: 'sightseeing',
-    notes: 'Patrimonio UNESCO con vista incorniciata sulle montagne di Arashiyama.'
-  },
-  {
-    keywords: ['ruriko-in', 'rurikoin'],
-    canonicalName: 'Tempio Ruriko-in (Foliage sul Tavolo Laccato)',
-    locationName: 'Ruriko-in, Kamitakano, Sakyo, Kyoto',
-    lat: 35.0641,
-    lng: 135.8197,
-    defaultCategory: 'sightseeing',
-    notes: 'Famoso per i riflessi spettacolari delle foglie d’acero sul pavimento e tavolo laccato nero.'
-  },
-  {
-    keywords: ['sentiero della filosofia', 'tetsugaku no michi', 'filosofia'],
-    canonicalName: 'Sentiero della Filosofia (Tetsugaku-no-Michi)',
-    locationName: 'Philosopher’s Path, Sakyo, Kyoto',
-    lat: 35.0232,
-    lng: 135.7958,
-    defaultCategory: 'sightseeing',
-    notes: 'Passeggiata lastricata lungo il canale alberato tra alberi di ciliegio e aceri.'
-  },
-  {
-    keywords: ['ginkaku-ji', 'ginkakuji', 'padiglione d’argento', "padiglione d'argento"],
-    canonicalName: 'Ginkaku-ji (Padiglione d’Argento)',
-    locationName: 'Ginkaku-ji, Sakyo, Kyoto',
-    lat: 35.0272,
-    lng: 135.7982,
-    defaultCategory: 'sightseeing',
-    notes: 'Elegante tempio zen con giardino di sabbia a cono lunare e laghetto muschioso.'
-  },
-  // Additional Hiroshima landmarks
-  {
-    keywords: ['parco della pace', 'peace memorial', 'cupola della bomba', 'genbaku'],
-    canonicalName: 'Parco Memoriale della Pace di Hiroshima & Cupola di Genbaku',
-    locationName: 'Peace Memorial Park, Hiroshima',
-    lat: 34.3928,
-    lng: 132.4526,
-    defaultCategory: 'sightseeing',
-    notes: 'Monumento commemorativo e Museo della Pace dedicato alla memoria storica.'
-  },
-  // Additional Osaka landmarks
-  {
-    keywords: ['minoh park', 'minoh', 'minoo', 'cascata di minoo'],
-    canonicalName: 'Parco Naturale di Minoh & Cascata (Foliage & Momiji Tempura)',
-    locationName: 'Minoh Park, Minoh, Osaka',
-    lat: 34.8496,
-    lng: 135.4727,
-    defaultCategory: 'sightseeing',
-    notes: 'Valle boscosa rinomata per il foliage autunnale, la cascata alta 33m e le foglie d’acero fritte.'
-  },
-  {
-    keywords: ['kaiyukan', 'acquario di osaka', 'osaka aquarium'],
-    canonicalName: 'Acquario Kaiyukan di Osaka (Vasca Squali Balena)',
-    locationName: 'Osaka Aquarium Kaiyukan, Tempozan, Osaka',
-    lat: 34.6545,
-    lng: 135.429,
-    defaultCategory: 'sightseeing',
-    notes: 'Uno dei più grandi acquari al mondo con gigantesca vasca centrale dedicata all’Oceano Pacifico.'
-  }
-];
-
-interface CityInfo {
-  canonical: string;
-  countryPresetId: string;
-  countryName: string;
-  emoji: string;
-  currency: string;
-  rateFromEur: number;
-  lat: number;
-  lng: number;
-  stationOrAirportLat?: number;
-  stationOrAirportLng?: number;
-  freeDaySuggestions?: Array<{
-    time: string;
-    title: string;
-    locationName: string;
-    lat: number;
-    lng: number;
-    category: ActivityCategory;
-    notes?: string;
-  }>;
-}
-
-const CITY_CATALOG: Record<string, CityInfo> = {
-  tokyo: {
-    canonical: 'Tokyo',
-    countryPresetId: 'japan',
-    countryName: 'Giappone',
-    emoji: '🇯🇵',
-    currency: 'JPY',
-    rateFromEur: 162.5,
-    lat: 35.6812,
-    lng: 139.7671,
-    freeDaySuggestions: [
-      {
-        time: '09:15',
-        title: 'Tempio Senso-ji e Nakamise-dori',
-        locationName: 'Asakusa, Tokyo',
-        lat: 35.7148,
-        lng: 139.7967,
-        category: 'sightseeing',
-        notes: 'Porta Kaminarimon e botteghe storiche di Asakusa.'
-      },
-      {
-        time: '13:30',
-        title: 'Santuario Meiji Jingu & Harajuku',
-        locationName: 'Meiji Jingu, Shibuya, Tokyo',
-        lat: 35.6764,
-        lng: 139.6993,
-        category: 'sightseeing',
-        notes: 'Passeggiata nel bosco sacro e Takeshita Street.'
-      },
-      {
-        time: '18:00',
-        title: 'Shibuya Crossing & Vista serale',
-        locationName: 'Shibuya Scramble Crossing, Tokyo',
-        lat: 35.6595,
-        lng: 139.7004,
-        category: 'sightseeing'
-      },
-      {
-        time: '09:30',
-        title: 'Mercato Esterno di Tsukiji',
-        locationName: 'Tsukiji Outer Market, Tokyo',
-        lat: 35.6655,
-        lng: 139.7707,
-        category: 'food',
-        notes: 'Colazione/brunch tra sushi fresco, tamagoyaki e matcha.'
-      },
-      {
-        time: '14:00',
-        title: 'Parco di Ueno & Akihabara Electric Town',
-        locationName: 'Akihabara, Tokyo',
-        lat: 35.6984,
-        lng: 139.7731,
-        category: 'shopping'
-      },
-      {
-        time: '19:30',
-        title: 'Serata tra i vicoli di Shinjuku (Omoide Yokocho)',
-        locationName: 'Shinjuku, Tokyo',
-        lat: 35.6938,
-        lng: 139.7034,
-        category: 'hidden_gem'
-      }
-    ]
-  },
-  fujikawaguchiko: {
-    canonical: 'Fujikawaguchiko',
-    countryPresetId: 'japan',
-    countryName: 'Giappone',
-    emoji: '🇯🇵',
-    currency: 'JPY',
-    rateFromEur: 162.5,
-    lat: 35.4982,
-    lng: 138.7686,
-    freeDaySuggestions: [
-      {
-        time: '11:30',
-        title: 'Pagoda Chureito (Vista iconica Monte Fuji)',
-        locationName: 'Arakurayama Sengen Park, Fujiyoshida',
-        lat: 35.5013,
-        lng: 138.8014,
-        category: 'sightseeing',
-        notes: 'Salita panoramica con vista sul Monte Fuji.'
-      },
-      {
-        time: '15:00',
-        title: 'Passeggiata lungo il Lago Kawaguchiko & Oishi Park',
-        locationName: 'Oishi Park, Fujikawaguchiko',
-        lat: 35.523,
-        lng: 138.7458,
-        category: 'relax'
-      }
-    ]
-  },
-  kyoto: {
-    canonical: 'Kyoto',
-    countryPresetId: 'japan',
-    countryName: 'Giappone',
-    emoji: '🇯🇵',
-    currency: 'JPY',
-    rateFromEur: 162.5,
-    lat: 34.9858,
-    lng: 135.7588,
-    freeDaySuggestions: [
-      {
-        time: '10:00',
-        title: 'Mercato di Nishiki & Centro storico',
-        locationName: 'Nishiki Market, Kyoto',
-        lat: 35.005,
-        lng: 135.7649,
-        category: 'food'
-      },
-      {
-        time: '17:30',
-        title: 'Passeggiata serale a Gion & Pontocho',
-        locationName: 'Gion, Kyoto',
-        lat: 35.0037,
-        lng: 135.7785,
-        category: 'hidden_gem'
-      }
-    ]
-  },
-  hiroshima: {
-    canonical: 'Hiroshima',
-    countryPresetId: 'japan',
-    countryName: 'Giappone',
-    emoji: '🇯🇵',
-    currency: 'JPY',
-    rateFromEur: 162.5,
-    lat: 34.3955,
-    lng: 132.4536,
-    freeDaySuggestions: [
-      {
-        time: '09:00',
-        title: 'Parco Commemorativo della Pace & Atomic Bomb Dome',
-        locationName: 'Hiroshima Peace Memorial Park, Hiroshima',
-        lat: 34.3955,
-        lng: 132.4536,
-        category: 'sightseeing'
-      }
-    ]
-  },
-  osaka: {
-    canonical: 'Osaka',
-    countryPresetId: 'japan',
-    countryName: 'Giappone',
-    emoji: '🇯🇵',
-    currency: 'JPY',
-    rateFromEur: 162.5,
-    lat: 34.6937,
-    lng: 135.5023,
-    freeDaySuggestions: [
-      {
-        time: '09:30',
-        title: 'Castello di Osaka & Giardini',
-        locationName: 'Osaka Castle, Osaka',
-        lat: 34.6873,
-        lng: 135.5262,
-        category: 'sightseeing'
-      },
-      {
-        time: '13:00',
-        title: 'Pranzo street food al Mercato di Kuromon',
-        locationName: 'Kuromon Market, Osaka',
-        lat: 34.6654,
-        lng: 135.5065,
-        category: 'food'
-      },
-      {
-        time: '18:30',
-        title: 'Serata a Dotonbori & Namba',
-        locationName: 'Dotonbori, Osaka',
-        lat: 34.6687,
-        lng: 135.5013,
-        category: 'sightseeing',
-        notes: 'Luci sul canale, insegna Glico Man, takoyaki e okonomiyaki.'
-      }
-    ]
-  },
-  lisbona: {
-    canonical: 'Lisbona',
-    countryPresetId: 'europe',
-    countryName: 'Portogallo',
-    emoji: '🇵🇹',
-    currency: 'EUR',
-    rateFromEur: 1,
-    lat: 38.7223,
-    lng: -9.1393
-  },
-  porto: {
-    canonical: 'Porto',
-    countryPresetId: 'europe',
-    countryName: 'Portogallo',
-    emoji: '🇵🇹',
-    currency: 'EUR',
-    rateFromEur: 1,
-    lat: 41.1579,
-    lng: -8.6291
-  },
-  parigi: {
-    canonical: 'Parigi',
-    countryPresetId: 'europe',
-    countryName: 'Francia',
-    emoji: '🇫🇷',
-    currency: 'EUR',
-    rateFromEur: 1,
-    lat: 48.8566,
-    lng: 2.3522
-  },
-  londra: {
-    canonical: 'Londra',
-    countryPresetId: 'uk',
-    countryName: 'Regno Unito',
-    emoji: '🇬🇧',
-    currency: 'GBP',
-    rateFromEur: 0.84,
-    lat: 51.5074,
-    lng: -0.1278
-  },
-  'new york': {
-    canonical: 'New York',
-    countryPresetId: 'usa',
-    countryName: 'Stati Uniti',
-    emoji: '🇺🇸',
-    currency: 'USD',
-    rateFromEur: 1.08,
-    lat: 40.7128,
-    lng: -74.006
-  },
-  barcellona: {
-    canonical: 'Barcellona',
-    countryPresetId: 'europe',
-    countryName: 'Spagna',
-    emoji: '🇪🇸',
-    currency: 'EUR',
-    rateFromEur: 1,
-    lat: 41.3874,
-    lng: 2.1686
-  },
-  madrid: {
-    canonical: 'Madrid',
-    countryPresetId: 'europe',
-    countryName: 'Spagna',
-    emoji: '🇪🇸',
-    currency: 'EUR',
-    rateFromEur: 1,
-    lat: 40.4168,
-    lng: -3.7038
-  },
-  bangkok: {
-    canonical: 'Bangkok',
-    countryPresetId: 'custom',
-    countryName: 'Thailandia',
-    emoji: '🇹🇭',
-    currency: 'THB',
-    rateFromEur: 37.2,
-    lat: 13.7563,
-    lng: 100.5018
-  },
-  seoul: {
-    canonical: 'Seoul',
-    countryPresetId: 'custom',
-    countryName: 'Corea del Sud',
-    emoji: '🇰🇷',
-    currency: 'KRW',
-    rateFromEur: 1480,
-    lat: 37.5665,
-    lng: 126.978
-  }
-};
+import { KNOWN_PLACES_DB, type KnownPlaceEntry } from '../data/knownPlaces.ts';
+import { CITY_CATALOG, type CityInfo } from '../data/cityCatalog.ts';
 
 const MONTH_NAMES: Record<string, number> = {
   gen: 1,
@@ -854,26 +107,52 @@ function smartTitleCase(text: string): string {
 }
 
 function lookupCityInfo(rawName: string): CityInfo | undefined {
+  if (!rawName) return undefined;
   const key = rawName.trim().toLowerCase();
   if (CITY_CATALOG[key]) return CITY_CATALOG[key];
+
+  let bestMatch: CityInfo | undefined;
+  let bestLen = 0;
   for (const [k, info] of Object.entries(CITY_CATALOG)) {
-    if (key.includes(k)) return info;
+    const isShort = k.length <= 4;
+    const re = isShort
+      ? new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+      : new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    if (re.test(key)) {
+      if (k.length > bestLen) {
+        bestLen = k.length;
+        bestMatch = info;
+      }
+    }
   }
-  return undefined;
+  return bestMatch;
+}
+
+export function normalizeDiacritics(str: string): string {
+  return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
 function lookupKnownPlace(rawText: string): KnownPlaceEntry | undefined {
+  if (!rawText) return undefined;
   const lower = rawText.trim().toLowerCase();
+  const normText = normalizeDiacritics(lower);
   let bestMatch: KnownPlaceEntry | undefined;
   let bestLen = 0;
 
   for (const entry of KNOWN_PLACES_DB) {
     for (const kw of entry.keywords) {
       const isShort = kw.length <= 4;
-      const re = isShort
+      const normKw = normalizeDiacritics(kw);
+
+      const reLower = isShort
         ? new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
         : new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      if (re.test(lower)) {
+
+      const reNorm = isShort
+        ? new RegExp(`\\b${normKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+        : new RegExp(normKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+      if (reLower.test(lower) || reNorm.test(normText)) {
         if (kw.length > bestLen) {
           bestLen = kw.length;
           bestMatch = entry;
@@ -979,22 +258,38 @@ function extractTimeAndCleanText(raw: string): {
 function inferCategory(text: string, fallback: ActivityCategory = 'sightseeing'): ActivityCategory {
   const lower = text.toLowerCase();
   if (
-    /\b(arrivo|volo|aeroporto|rientro|trasferimento|partenza\s+da|spostamento|treno|shinkansen|traghetto|bus)\b/.test(
+    /\b(arrivo|atterraggio|volo|aeroporto|airtrain|rientro|ritorno|trasferimento|partenza|spostamento|treno|frecciarossa|lner|alfa\s+pendular|shinkansen|traghetto|ferry|battello|bus|navetta|noleggio\s+auto|4x4|auto\s+a\s+noleggio|riconsegna\s+auto|crociera|funicolare|funivia|cabinovia|gondola)\b/i.test(
       lower
     )
   ) {
     return 'transport';
   }
-  if (/\b(cerimonia\s+del\s+t[eè]|maikoya|onsen|terme|spa|relax|spiaggia)\b/.test(lower)) {
-    return 'relax';
-  }
-  if (/\b(pranzo|cena|colazione|mercato|ramen|sushi|street\s*food|ristorante|degustazione)\b/.test(lower)) {
-    return 'food';
-  }
-  if (/\b(hotel|check-in|check-out|ryokan|alloggio)\b/.test(lower)) {
+  if (
+    /\b(hotel|check-in|check-out|ryokan|alloggio|notte\s+(?:a|in)|pernottamento|riad|resort|accampamento|b&b|ostello|guesthouse)\b/i.test(
+      lower
+    )
+  ) {
     return 'lodging';
   }
-  if (/\b(shopping|acquisto|pokemon|nintendo|souvenir)\b/.test(lower)) {
+  if (
+    /\b(cerimonia\s+del\s+t[eè]|maikoya|onsen|terme|spa|saturnia|blue\s+lagoon|massaggio|sorgenti\s+termali|bagno|relax|spiaggia|cammellata)\b/i.test(
+      lower
+    )
+  ) {
+    return 'relax';
+  }
+  if (
+    /\b(pranzo|cena|colazione|mercato|ramen|sushi|street\s*food|ristorante|trattoria|osteria|degustazione|vino|cantina|tapas|pici|bistecca|pecorino|paella|pad\s+thai|bloemenmarkt)\b/i.test(
+      lower
+    )
+  ) {
+    return 'food';
+  }
+  if (
+    /\b(shopping|acquisto|pokemon|nintendo|souvenir|fifth\s+avenue|suk|souk|boutique|centro\s+commerciale)\b/i.test(
+      lower
+    )
+  ) {
     return 'shopping';
   }
   return fallback;
@@ -1013,16 +308,18 @@ interface RawLineRule {
   parenBody: string;
 }
 
-const BULLET_PREFIX_RE = /^[\s\t]*[●○■□◆◇▪▫▶➔•*\-–—]+[\s\t]*/u;
+const BULLET_PREFIX_RE =
+  /^[\s\t]*[#●○■□◆◇▪▫▶➔•*\-–—~_+|📍✈️🏨🍽️🏛️🎟️🎒📌🗺️⭐✨]+\s*/u;
 
 const DAY_OF_WEEK_PAT =
   '(?:\\(?(?:dom(?:enica)?|lun(?:ed[ìi])?|mar(?:ted[ìi])?|mer(?:coled[ìi])?|gio(?:ved[ìi])?|ven(?:erd[ìi])?|sab(?:ato)?|sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)\\.?[)\\s]*)';
 
 export function cleanBulletPrefix(line: string): string {
-  return line
-    .replace(BULLET_PREFIX_RE, '')
-    .replace(/^[\s\t]*\d+[\.\)][\s\t]*/, '')
-    .trim();
+  let cleaned = line.replace(BULLET_PREFIX_RE, '').trim();
+  cleaned = cleaned.replace(/^[\s\t]*\d+[\.\)][\s\t]*/, '').trim();
+  cleaned = cleaned.replace(/^\*\*|\*\*$/g, '').trim();
+  cleaned = cleaned.replace(/^(?:in\s+data\s+|il\s+giorno\s+|il\s+di\s+|il\s+)/i, '').trim();
+  return cleaned;
 }
 
 export type LeadingDateResult =
@@ -1057,9 +354,50 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
 
   const monthNamesPattern = Object.keys(MONTH_NAMES).join('|');
 
+  // 0b. Explicit Day label with attached date:
+  // e.g. "Giorno 1 - 15/09: Roma Antica", "Giorno 1 (15/09): ...", "Giorno 1 (10/05): ...", "Giorno 1 - 15 Ottobre: ..."
+  const dayLabelWithDateRe = new RegExp(
+    `^(?:giorno|day|g)\\s*(\\d{1,2})\\s*(?:-|–|—|:|\\()\\s*` +
+      `(?:(\\d{1,2})\\s*\\/\\s*(\\d{1,2})(?:\\s*\\/\\s*(\\d{2,4}))?|(\\d{1,2})\\s+(${monthNamesPattern})(?:\\s+(\\d{4}))?)` +
+      `\\)?(?:\\s*[:\\-–—]?\\s*(.*)|$)`,
+    'i'
+  );
+  const dldm = cleaned.match(dayLabelWithDateRe);
+  if (dldm) {
+    const dayNum = Number(dldm[1]);
+    let sd = 0;
+    let sm = 0;
+    let sy: number | undefined;
+    if (dldm[2] && dldm[3]) {
+      sd = Number(dldm[2]);
+      sm = Number(dldm[3]);
+      sy = dldm[4] ? (dldm[4].length === 2 ? 2000 + Number(dldm[4]) : Number(dldm[4])) : undefined;
+    } else if (dldm[5] && dldm[6]) {
+      sd = Number(dldm[5]);
+      sm = MONTH_NAMES[dldm[6].toLowerCase()] || 0;
+      sy = dldm[7] ? Number(dldm[7]) : undefined;
+    }
+    if (sd >= 1 && sd <= 31 && sm >= 1 && sm <= 12) {
+      return {
+        kind: 'date',
+        spec: {
+          startDay: sd,
+          startMonth: sm,
+          startYear: sy,
+          endDay: sd,
+          endMonth: sm,
+          endYear: sy,
+          isRange: false
+        },
+        dayNumber: dayNum,
+        rest: (dldm[8] || '').trim()
+      };
+    }
+  }
+
   // 1. Cross-month words: "28 Nov - 02 Dic: Kyoto" or "28 nov – 2 dic"
   const crossMonthWordsRe = new RegExp(
-    `^(?:dal\\s+)?(\\d{1,2})\\s+(${monthNamesPattern})\\s*(?:-|–|—|\\s+al?\\s+)\\s*(\\d{1,2})\\s+(${monthNamesPattern})(?:\\s+(\\d{4}))?` +
+    `^(?:${DAY_OF_WEEK_PAT}\\s*,?\\s*)?(?:dal\\s+)?(\\d{1,2})\\s+(${monthNamesPattern})\\s*(?:-|–|—|\\s+al?\\s+)\\s*(\\d{1,2})\\s+(${monthNamesPattern})(?:\\s+(\\d{4}))?` +
       `(?:\\s*${DAY_OF_WEEK_PAT})*` +
       `(?:\\s*(?:-|–|—|:)?\\s*(?:giorno|day|g)\\s*(\\d{1,2}))?` +
       `(?:\\s*[:\\-–—]?\\s*(.*)|$)`,
@@ -1094,7 +432,7 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
   // 2. Month-word range or single date with optional day-of-week & optional day label
   // e.g. "22 Nov (Dom) – Giorno 1: Arrivo a Tokyo" or "3 Dic (Gio) - Giorno 12:" or "10-15 agosto: Mare"
   const wordDateWithDayLabelRe = new RegExp(
-    `^(?:dal\\s+)?(\\d{1,2})(?:\\s*(?:-|–|—|\\s+al?\\s+)\\s*(\\d{1,2}))?\\s+(${monthNamesPattern})(?:\\s+(\\d{4}))?` +
+    `^(?:${DAY_OF_WEEK_PAT}\\s*,?\\s*)?(?:dal\\s+)?(\\d{1,2})(?:\\s*(?:-|–|—|\\s+al?\\s+)\\s*(\\d{1,2}))?\\s+(${monthNamesPattern})(?:\\s+(\\d{4}))?` +
       `(?:\\s*${DAY_OF_WEEK_PAT})*` +
       `(?:\\s*(?:-|–|—|:)?\\s*(?:giorno|day|g)\\s*(\\d{1,2}))?` +
       `(?:\\s*[:\\-–—]?\\s*(.*)|$)`,
@@ -1126,8 +464,10 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
   }
 
   // 3. Cross-month numeric range: "28/11-02/12: ..." or "04/12-07/12 ..."
-  const crossMonthRe =
-    /^(?:dal\s+)?(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\s*(?:-|–|—|\s+al?\s+|\s+to\s+)\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?(?:\s*[:\-–—]?\s*(.*)|$)/i;
+  const crossMonthRe = new RegExp(
+    `^(?:${DAY_OF_WEEK_PAT}\\s*,?\\s*)?(?:dal\\s+)?(\\d{1,2})\\s*\\/\\s*(\\d{1,2})(?:\\s*\\/\\s*(\\d{2,4}))?\\s*(?:-|–|—|\\s+al?\\s+|\\s+to\\s+)\\s*(\\d{1,2})\\s*\\/\\s*(\\d{1,2})(?:\\s*\\/\\s*(\\d{2,4}))?(?:\\s*[:\\-–—]?\\s*(.*)|$)`,
+    'i'
+  );
   const cm = cleaned.match(crossMonthRe);
   if (cm) {
     const sd = Number(cm[1]);
@@ -1154,8 +494,10 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
   }
 
   // 4. Same-month numeric range: "22-27/11: ..." or "27-28/11 ..."
-  const sameMonthRe =
-    /^(?:dal\s+)?(\d{1,2})\s*(?:-|–|—|\s+al?\s+)\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?(?:\s*[:\-–—]?\s*(.*)|$)/i;
+  const sameMonthRe = new RegExp(
+    `^(?:${DAY_OF_WEEK_PAT}\\s*,?\\s*)?(?:dal\\s+)?(\\d{1,2})\\s*(?:-|–|—|\\s+al?\\s+)\\s*(\\d{1,2})\\s*\\/\\s*(\\d{1,2})(?:\\s*\\/\\s*(\\d{2,4}))?(?:\\s*[:\\-–—]?\\s*(.*)|$)`,
+    'i'
+  );
   const smMatch = cleaned.match(sameMonthRe);
   if (smMatch) {
     const sd = Number(smMatch[1]);
@@ -1186,7 +528,7 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
   // 5. Single numeric DD/MM(/YYYY) with optional day of week & optional day label
   // e.g. "22/11: arrivo...", "22/11 (Dom) – Giorno 1: ...", "07/12 volo di rientro da Osaka ore 16"
   const singleDateRe = new RegExp(
-    `^(\\d{1,2})\\s*\\/\\s*(\\d{1,2})(?:\\s*\\/\\s*(\\d{2,4}))?` +
+    `^(?:${DAY_OF_WEEK_PAT}\\s*,?\\s*)?(\\d{1,2})\\s*\\/\\s*(\\d{1,2})(?:\\s*\\/\\s*(\\d{2,4}))?` +
       `(?:\\s*${DAY_OF_WEEK_PAT})*` +
       `(?:\\s*(?:-|–|—|:)?\\s*(?:giorno|day|g)\\s*(\\d{1,2}))?` +
       `(?:\\s*[:\\-–—]?\\s*(.*)|$)`,
@@ -1331,11 +673,43 @@ function buildActivityFromDescription(
     };
   }
 
+  // Handle lodging check-in / sistemazione
+  if (/^(?:check-in|sistemazione(?:\s+in\s+alloggio|\s+in\s+hotel|\s+in\s+riad)?)\b/i.test(cleanLabel)) {
+    return {
+      id: makeId('act'),
+      time: options?.overrideTime || explicitTime || '13:30',
+      title: 'Check-in in alloggio / hotel',
+      locationName: cityInfo ? `${cityInfo.canonical}` : 'Alloggio',
+      category: 'lodging',
+      notes: extraNote || 'Posare i bagagli e rinfrescarsi prima delle visite.',
+      completed: false
+    };
+  }
+
   // Handle semantic transport phrases cleanly ("atterraggio alle 12:00", "arrivo a tokyo", "trasferimento a Kyoto", "volo di rientro da Osaka")
   const isArrival = /^(?:atterraggio|arrivo(?:\s+del\s+volo)?)\b/i.test(cleanLabel);
   if (isArrival) {
+    if (known && known.lat && known.lng && !/aeroporto/i.test(known.canonicalName)) {
+      return {
+        id: makeId('act'),
+        time: explicitTime || options?.overrideTime || '12:00',
+        title: `Arrivo: ${known.canonicalName}`,
+        locationName: known.locationName,
+        lat: known.lat,
+        lng: known.lng,
+        category: 'transport',
+        notes: extraNote || known.notes || 'Arrivo a destinazione e sistemazione.',
+        completed: false
+      };
+    }
+
     const cityInText = lookupCityInfo(cleanLabel) || lookupCityInfo(baseCity);
-    const destCanonical = cityInText?.canonical || (baseCity ? smartTitleCase(baseCity) : 'Tokyo');
+    const destMatch = cleanLabel.match(
+      /^(?:atterraggio|arrivo(?:\s+del\s+volo)?)\s+(?:a|in|ad|all['’]aeroporto\s+(?:di\s+)?|all[eoa’']|agli|ai|al)\s*([^,.;]+)/i
+    );
+    const inferredDest = destMatch ? smartTitleCase(destMatch[1].trim()) : undefined;
+    const destCanonical =
+      cityInText?.canonical || inferredDest || (baseCity ? smartTitleCase(baseCity) : 'Destinazione');
     return {
       id: makeId('act'),
       time: explicitTime || options?.overrideTime || '12:00',
@@ -1488,60 +862,177 @@ function buildActivityFromDescription(
 }
 
 /**
- * Expands a single-day multi-step chain such as:
- * - "Hiroshima + Miyajima fino al tramonto e poi rientro a Hiroshima"
- * - "partenza da Hiroshima per castello di Himeji e poi trasferimento a Osaka"
+ * Intelligently segments a descriptive line into sequential travel activities.
+ * Handles:
+ * 1. Time-of-day blocks ("Mattina: ... Pomeriggio: ... Sera: ...")
+ * 2. Sentences (". " followed by capital letters or verbs)
+ * 3. Semicolons ("; ")
+ * 4. Chain tokens ("e poi", "poi", "->", "+")
+ * 5. Distinct known POIs separated by commas or conjunctions ("Colosseo, Trevi, Pantheon")
  */
-function expandSingleDayChain(rawText: string, baseCity: string): Activity[] {
-  const parts = rawText
-    .split(/\s+e\s+poi\s+|\s+poi\s+|\s*(?:->|→|⇒)\s*|\s+\+\s+/i)
+function segmentLineIntoActivities(rawText: string, baseCity: string): Activity[] {
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+
+  // Special pattern: "partenza da X per Y"
+  const depForMatch = trimmed.match(/^partenza\s+da\s+(.+?)\s+(?:per|verso)\s+(.+)$/i);
+  if (depForMatch) {
+    const fromCityRaw = smartTitleCase(depForMatch[1].trim());
+    const toStopRaw = depForMatch[2].trim();
+    const fromCity = lookupCityInfo(fromCityRaw);
+    const act1: Activity = {
+      id: makeId('act'),
+      time: '08:30',
+      title: `Partenza da ${fromCity?.canonical || fromCityRaw}`,
+      locationName: fromCity ? `Stazione ${fromCity.canonical}` : fromCityRaw,
+      lat: fromCity?.lat,
+      lng: fromCity?.lng,
+      category: 'transport',
+      completed: false
+    };
+    const subsequentActivities = segmentPhrases(toStopRaw, baseCity);
+    if (subsequentActivities.length > 0 && (subsequentActivities[0].time === '10:00' || !subsequentActivities[0].time)) {
+      subsequentActivities[0].time = '10:15';
+    }
+    return [act1, ...subsequentActivities];
+  }
+
+  // 1. Check for time-of-day sections:
+  // e.g. "Mattina ore 09:00 traghetto... Pomeriggio: Wall Street... Sera: Broadway"
+  const timeBlockRegex =
+    /(?:^|[.;\n])\s*(?:(?:nel|in|di)\s+)?\b(mattina\s+presto|tarda\s+mattina|mattina|pranzo|nel\s+pomeriggio|tardo\s+pomeriggio|pomeriggio|tramonto|al\s+tramonto|sera|serata|cena|notte)\s*[:\-–—]\s*/gi;
+
+  const matches = [...trimmed.matchAll(timeBlockRegex)];
+  if (matches.length >= 2) {
+    const activities: Activity[] = [];
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const timeHeader = match[1];
+      const startIdx = (match.index ?? 0) + match[0].length;
+      const endIdx = i + 1 < matches.length ? (matches[i + 1].index ?? trimmed.length) : trimmed.length;
+      const blockText = trimmed.slice(startIdx, endIdx).replace(/^[,;.\-–—\s]+|[,;.\-–—\s]+$/g, '').trim();
+      if (!blockText) continue;
+
+      const subActivities = segmentPhrases(blockText, baseCity, timeHeader);
+      activities.push(...subActivities);
+    }
+    if (activities.length > 0) return activities;
+  }
+
+  return segmentPhrases(trimmed, baseCity);
+}
+
+function segmentPhrases(blockText: string, baseCity: string, inheritedTimeHeader?: string): Activity[] {
+  // Split on semicolons or chain arrows/words
+  const rawParts = blockText
+    .split(/\s*;\s*|\s+e\s+poi\s+|\s+poi\s+|\s*(?:->|→|⇒)\s*|\s+\+\s+/i)
     .map((s) => s.trim())
     .filter(Boolean);
 
   const activities: Activity[] = [];
-  const chainSlots = ['09:00', '13:00', '17:30', '20:00'];
 
-  parts.forEach((part) => {
-    // Special pattern: "partenza da X per Y"
-    const depForMatch = part.match(/^partenza\s+da\s+(.+?)\s+(?:per|verso)\s+(.+)$/i);
-    if (depForMatch) {
-      const fromCityRaw = smartTitleCase(depForMatch[1].trim());
-      const toStopRaw = depForMatch[2].trim();
-      const fromCity = lookupCityInfo(fromCityRaw);
+  for (const part of rawParts) {
+    // Split sentences inside part: ". " followed by capital letter or keyword
+    const sentences = part
+      .split(/\.\s+(?=[A-ZÀ-Ú0-9]|Mattina|Pomeriggio|Sera|Notte|Poi|Check-in|Volo|Treno|Ritiro|Bagno|Salita|Visita|Passeggiata|Escursione|Piazza|Santuario|Tempio|Castello|Parco|Museo|Crociera|Teatro)/)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-      activities.push({
-        id: makeId('act'),
-        time: '08:30',
-        title: `Partenza da ${fromCity?.canonical || fromCityRaw}`,
-        locationName: fromCity ? `Stazione ${fromCity.canonical}` : fromCityRaw,
-        lat: fromCity?.lat,
-        lng: fromCity?.lng,
-        category: 'transport',
-        completed: false
-      });
-
-      activities.push(
-        buildActivityFromDescription(toStopRaw, baseCity, {
-          overrideTime: '10:15'
-        })
-      );
-      return;
+    for (const sent of sentences) {
+      // Check if sentence lists multiple known POIs separated by commas or " e "
+      const poiSplits = splitSentenceByKnownPOIs(sent);
+      if (poiSplits.length > 1) {
+        for (const piece of poiSplits) {
+          const textWithTime = inheritedTimeHeader && !extractTimeAndCleanText(piece).timeBucket && !extractTimeAndCleanText(piece).explicitTime
+            ? `${inheritedTimeHeader}: ${piece}`
+            : piece;
+          activities.push(buildActivityFromDescription(textWithTime, baseCity));
+        }
+      } else {
+        const textWithTime = inheritedTimeHeader && !extractTimeAndCleanText(sent).timeBucket && !extractTimeAndCleanText(sent).explicitTime
+          ? `${inheritedTimeHeader}: ${sent}`
+          : sent;
+        activities.push(buildActivityFromDescription(textWithTime, baseCity));
+      }
     }
-
-    const { explicitTime, timeBucket } = extractTimeAndCleanText(part);
-    const slotFallback =
-      !explicitTime && !timeBucket && parts.length > 1
-        ? chainSlots[Math.min(activities.length, chainSlots.length - 1)]
-        : undefined;
-
-    activities.push(
-      buildActivityFromDescription(part, baseCity, {
-        overrideTime: slotFallback
-      })
-    );
-  });
+  }
 
   return activities;
+}
+
+function isRecognizedActivityFragment(fragment: string): boolean {
+  const trimmed = fragment.trim();
+  if (!trimmed) return false;
+  // 1. Known POI
+  if (lookupKnownPlace(trimmed)) return true;
+  // 2. Known City
+  if (lookupCityInfo(trimmed)) return true;
+  // 3. Explicit time or time bucket
+  const timeInfo = extractTimeAndCleanText(trimmed);
+  if (timeInfo.explicitTime || timeInfo.timeBucket) return true;
+  // 4. Action keywords
+  const actionRe =
+    /\b(arrivo|atterraggio|volo|rientro|ritorno|partenza|trasferimento|spostamento|treno|tram|bus|shinkansen|traghetto|ferry|crociera|cabinovia|funivia|funicolare|check-in|sistemazione|alloggio|hotel|riad|ryokan|noleggio|bici|auto|4x4|passeggiata|visita|escursione|salita|camminata|degustazione|pranzo|cena|aperitivo|colazione|mercato|tempio|santuario|castello|parco|museo|chiesa|cattedrale|basilica|piazza|palazzo|giardino|spiaggia|dune|deserto|terme|laguna|cascata|lago|torre|ponte|strada|quartiere|teatro|monastero)\b/i;
+  if (actionRe.test(trimmed)) return true;
+  return false;
+}
+
+function splitSentenceByKnownPOIs(sentence: string): string[] {
+  // If sentence has an introductory theme before a colon (e.g. "Gita a Sintra: ...", "Escursione: ...")
+  const colonMatch = sentence.match(/^([^:]{4,50})\s*:\s*(.+)$/);
+  if (colonMatch) {
+    const rightSide = colonMatch[2].trim();
+    const rightSplits = splitSentenceByKnownPOIs(rightSide);
+    if (rightSplits.length > 1) {
+      return rightSplits;
+    }
+  }
+
+  // Split on commas
+  const commaParts = sentence.split(/,\s*/).map((p) => p.trim()).filter(Boolean);
+  const result: string[] = [];
+
+  for (const cp of commaParts) {
+    // Inside each comma part, split on conjunctions " e " / " ed " / " and " / " + "
+    const andPieces = cp
+      .split(/\s+(?:e|ed|and|\+)\s+/i)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (andPieces.length > 1) {
+      const recognizedCount = andPieces.filter(isRecognizedActivityFragment).length;
+      if (
+        recognizedCount >= 2 ||
+        (recognizedCount >= 1 && andPieces.every((p) => p.split(/\s+/).length >= 2))
+      ) {
+        result.push(...andPieces);
+        continue;
+      }
+    }
+
+    result.push(cp);
+  }
+
+  if (result.length > 1 && result.some(isRecognizedActivityFragment)) {
+    return result;
+  }
+
+  // If no commas, check if sentence has conjunctions connecting multiple activities
+  const andPieces = sentence
+    .split(/\s+(?:e|ed|and|\+)\s+/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (andPieces.length > 1) {
+    const recognizedCount = andPieces.filter(isRecognizedActivityFragment).length;
+    if (
+      recognizedCount >= 2 ||
+      (recognizedCount >= 1 && andPieces.every((p) => p.split(/\s+/).length >= 2))
+    ) {
+      return andPieces;
+    }
+  }
+
+  return [sentence];
 }
 
 /**
@@ -1637,9 +1128,9 @@ export function parseNaturalLanguageItinerary(
     }
 
     if (match?.kind === 'date') {
-      const { mainBody, parenBody } = splitOuterParentheses(match.rest);
       if (match.spec.isRange && !match.dayNumber) {
         // Multi-day stay range rule e.g. "22-27/11: TOKYO (...)"
+        const { mainBody, parenBody } = splitOuterParentheses(match.rest);
         rawStayRules.push({
           ...match.spec,
           mainBody,
@@ -1652,12 +1143,9 @@ export function parseNaturalLanguageItinerary(
           spec: match.spec,
           dayNumber: match.dayNumber,
           stageCity: currentStageCity,
-          dayTitle: mainBody || undefined,
+          dayTitle: match.rest.trim() || undefined,
           childLines: []
         };
-        if (parenBody) {
-          currentDayNode.childLines.push(parenBody);
-        }
         dayNodes.push(currentDayNode);
       }
     } else {
@@ -1839,7 +1327,7 @@ export function parseNaturalLanguageItinerary(
     if (dn.dayTitle) {
       if (dn.childLines.length === 0) {
         // Flat format single-day chain (e.g. "arrivo a tokyo ore 12.50" or "partenza da Hiroshima...")
-        const generated = expandSingleDayChain(dn.dayTitle, bucket.baseCity);
+        const generated = segmentLineIntoActivities(dn.dayTitle, bucket.baseCity);
         bucket.activities.push(...generated);
       } else {
         bucket.dayTitleOverride = dn.dayTitle;
@@ -1858,10 +1346,11 @@ export function parseNaturalLanguageItinerary(
       if (/^pomeriggio\s*\(?scegliere\s+tra\s+opzione/i.test(clean)) {
         continue;
       }
-      bucket.activities.push(buildActivityFromDescription(clean, bucket.baseCity));
+      const generated = segmentLineIntoActivities(clean, bucket.baseCity);
+      bucket.activities.push(...generated);
     }
 
-    if (dn.childLines.length > 0) {
+    if (bucket.activities.length > 1) {
       staggerActivities(bucket.activities);
     }
   }

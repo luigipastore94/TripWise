@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { runEvaluationHarness } from '../scripts/itinerary-training-loop.mjs';
 
 // 1. Flexible Currency Amount Parser (Postel's Law)
 function parseFlexibleAmount(raw) {
@@ -1570,4 +1571,9 @@ assert.equal(resolveDayIndex('?day=1', null, 5), 0);
 assert.equal(resolveDayIndex('?day=99', '1', 5), 1, 'Out of bounds URL day must fall back to valid stored day');
 assert.equal(resolveDayIndex('', '3', 5), 3, 'Stored day index 3 must be respected when no URL day is present');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants)');
+// 17. 20-Tour Global Itinerary Training Loop & Precision Benchmark (100% Score)
+const benchmarkResult = runEvaluationHarness();
+assert.equal(benchmarkResult.passedCases, benchmarkResult.totalCases, 'All 20 global itinerary benchmark tours must pass');
+assert.equal(benchmarkResult.precisionScore, 100, 'Evaluation harness must achieve 100% precision score');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants)');
