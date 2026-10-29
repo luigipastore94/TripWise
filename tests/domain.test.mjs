@@ -1739,4 +1739,38 @@ assert.ok(bidirectionalMerge.merged.expenses.some((e) => e.id === 'exp_my_coffee
 assert.ok(bidirectionalMerge.merged.expenses.some((e) => e.id === 'exp_companion_1'), 'Remote expense preserved');
 assert.equal(bidirectionalMerge.hasLocalChanges, true, 'Resulting merge has local changes to safely push to cloud');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity)');
+// 21. Bugfix Invariant: Consecutive Remote Expense Synchronization (Expense 1, then Expense 2, then Expense 3)
+// Simulates sequential snapshot arrivals on Device 1 when Device 2 adds consecutive expenses in the same session
+let currentDevice1Trip = { ...baseTripFixture, expenses: [] };
+let lastSyncedTripDevice1 = { ...baseTripFixture, expenses: [] };
+
+// Step 1: Device 2 adds Expense 1
+const expSnap1 = { id: 'exp_seq_1', title: 'Pranzo', amount: 30, paidById: 'mem_2', splitWith: ['mem_1', 'mem_2'], currency: 'EUR', date: '2026-11-01', category: 'food', updatedAt: 1000 };
+const remoteSnap1 = { ...baseTripFixture, expenses: [expSnap1], updatedAt: 1000 };
+
+const mergeStep1 = mergeTrips(lastSyncedTripDevice1, currentDevice1Trip, remoteSnap1);
+assert.equal(mergeStep1.merged.expenses.length, 1, 'Step 1: Device 1 must receive Expense 1');
+assert.equal(mergeStep1.merged.expenses[0].id, 'exp_seq_1');
+currentDevice1Trip = mergeStep1.merged;
+lastSyncedTripDevice1 = remoteSnap1;
+
+// Step 2: Device 2 adds Expense 2 (consecutive write without full reload)
+const expSnap2 = { id: 'exp_seq_2', title: 'Metro', amount: 5, paidById: 'mem_2', splitWith: ['mem_1', 'mem_2'], currency: 'EUR', date: '2026-11-01', category: 'transport', updatedAt: 1100 };
+const remoteSnap2 = { ...baseTripFixture, expenses: [expSnap2, expSnap1], updatedAt: 1100 };
+
+const mergeStep2 = mergeTrips(lastSyncedTripDevice1, currentDevice1Trip, remoteSnap2);
+assert.equal(mergeStep2.merged.expenses.length, 2, 'Step 2: Device 1 must receive Expense 2 and retain Expense 1');
+assert.ok(mergeStep2.merged.expenses.some(e => e.id === 'exp_seq_1'), 'Expense 1 must still be present in Step 2');
+assert.ok(mergeStep2.merged.expenses.some(e => e.id === 'exp_seq_2'), 'Expense 2 must be present in Step 2');
+currentDevice1Trip = mergeStep2.merged;
+lastSyncedTripDevice1 = remoteSnap2;
+
+// Step 3: Device 2 adds Expense 3
+const expSnap3 = { id: 'exp_seq_3', title: 'Museo', amount: 15, paidById: 'mem_2', splitWith: ['mem_1', 'mem_2'], currency: 'EUR', date: '2026-11-01', category: 'sightseeing', updatedAt: 1200 };
+const remoteSnap3 = { ...baseTripFixture, expenses: [expSnap3, expSnap2, expSnap1], updatedAt: 1200 };
+
+const mergeStep3 = mergeTrips(lastSyncedTripDevice1, currentDevice1Trip, remoteSnap3);
+assert.equal(mergeStep3.merged.expenses.length, 3, 'Step 3: Device 1 must receive Expense 3 and retain all prior expenses');
+assert.equal(mergeStep3.hasLocalChanges, false, 'No local changes expected on purely incoming remote stream');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization)');
