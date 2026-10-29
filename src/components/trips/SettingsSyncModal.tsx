@@ -12,6 +12,7 @@ import {
   Cloud,
   Loader2,
   GitMerge,
+  UserPlus,
   RefreshCw,
   AlertCircle,
   Pencil,
@@ -61,7 +62,8 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
     setColorScheme,
     updateTripMeta,
     retryCloudSync,
-    mergeTripByCode
+    mergeTripByCode,
+    joinTripByCode
   } = useTrip();
 
   const idPrefix = useId();
@@ -72,9 +74,13 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
   const [copiedCode, setCopiedCode] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [syncingNow, setSyncingNow] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinFeedback, setJoinFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [mergeCode, setMergeCode] = useState('');
   const [isMerging, setIsMerging] = useState(false);
   const [mergeFeedback, setMergeFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [showAdvancedMerge, setShowAdvancedMerge] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editingMemberName, setEditingMemberName] = useState('');
   const [isEditingProfileName, setIsEditingProfileName] = useState(false);
@@ -126,6 +132,23 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
     setSyncingNow(true);
     await retryCloudSync();
     setSyncingNow(false);
+  };
+
+  const handleJoinTrip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = joinCode.trim();
+    if (!code) return;
+    setIsJoining(true);
+    setJoinFeedback(null);
+    const res = await joinTripByCode(code);
+    setIsJoining(false);
+    setJoinFeedback({ ok: res.ok, message: res.message });
+    if (res.ok) {
+      setJoinCode('');
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    }
   };
 
   const handleMergeTrip = async (e: React.FormEvent) => {
@@ -447,65 +470,141 @@ export const SettingsSyncModal: React.FC<SettingsSyncModalProps> = ({ open, onCl
           </div>
         )}
 
-        {/* Smart Merge / Recupero dati dal compagno */}
-        {activeTrip && user && (
-          <div className="rounded-2xl bg-brand-50/60 dark:bg-brand-950/30 p-4 border border-brand-200 dark:border-brand-900/60 space-y-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300 flex items-center gap-1.5">
-              <GitMerge className="w-4 h-4 text-brand-600" aria-hidden="true" />
-              <span>Unisci o Recupera Dati del Compagno</span>
+        {/* Primary Real-time Collaboration Join */}
+        {user && (
+          <div className="rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 p-4 border border-emerald-200 dark:border-emerald-900/60 space-y-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+              <UserPlus className="w-4 h-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+              <span>Unisciti al Viaggio del tuo Compagno</span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Il tuo compagno ha aggiunto spese o documenti con un altro codice o telefono? Inserisci il suo codice invito qui sotto: TripWise unirà automaticamente tutto nel viaggio attuale senza sovrascrivere o perdere nulla.
+              Il tuo compagno ti ha fornito il codice del viaggio? Inseriscilo qui sotto per collegarvi allo stesso identico viaggio. Tutte le spese, le tappe e i documenti si sincronizzeranno in automatico e in tempo reale su entrambi i telefoni.
             </p>
 
-            <form onSubmit={handleMergeTrip} className="space-y-2">
+            <form onSubmit={handleJoinTrip} className="space-y-2">
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={mergeCode}
-                  onChange={(e) => setMergeCode(e.target.value)}
-                  placeholder="Codice compagno (es. TW-XXXX-YYYY)..."
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  placeholder="Codice del compagno (es. TW-XXXX-YYYY)..."
                   autoCapitalize="characters"
                   spellCheck={false}
-                  className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white"
+                  className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <button
                   type="submit"
-                  disabled={isMerging || !mergeCode.trim()}
-                  className="min-h-[42px] px-4 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors shrink-0"
+                  disabled={isJoining || !joinCode.trim()}
+                  className="min-h-[44px] px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors shrink-0"
                 >
-                  {isMerging ? (
+                  {isJoining ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                      <span>Unione...</span>
+                      <span>Connessione...</span>
                     </>
                   ) : (
                     <>
-                      <GitMerge className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span>Unisci Dati</span>
+                      <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Unisciti</span>
                     </>
                   )}
                 </button>
               </div>
 
-              {mergeFeedback && (
+              {joinFeedback && (
                 <div
                   role="status"
                   className={`p-3 rounded-xl text-xs font-semibold flex items-start gap-2 ${
-                    mergeFeedback.ok
-                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    joinFeedback.ok
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
                       : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                   }`}
                 >
-                  {mergeFeedback.ok ? (
+                  {joinFeedback.ok ? (
                     <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
                   ) : (
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
                   )}
-                  <span>{mergeFeedback.message}</span>
+                  <span>{joinFeedback.message}</span>
                 </div>
               )}
             </form>
+          </div>
+        )}
+
+        {/* Secondary: Advanced Import / Merge into Current Trip */}
+        {activeTrip && user && (
+          <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/40 p-4 border border-slate-200 dark:border-slate-700 space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedMerge((prev) => !prev)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <GitMerge className="w-4 h-4 text-slate-500" aria-hidden="true" />
+                <span>Importa / Unisci Dati nel Viaggio Attuale</span>
+              </div>
+              <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                {showAdvancedMerge ? 'Nascondi' : 'Mostra opzione'}
+              </span>
+            </button>
+
+            {showAdvancedMerge && (
+              <div className="pt-2 space-y-3 border-t border-slate-200 dark:border-slate-700/60">
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Hai inserito spese o tappe con un altro telefono o codice temporaneo e vuoi solo riversarle in questo viaggio senza cambiare il viaggio attivo? Inserisci il codice qui sotto:
+                </p>
+
+                <form onSubmit={handleMergeTrip} className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={mergeCode}
+                      onChange={(e) => setMergeCode(e.target.value)}
+                      placeholder="Codice da importare (es. TW-XXXX-YYYY)..."
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isMerging || !mergeCode.trim()}
+                      className="min-h-[42px] px-4 rounded-xl bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors shrink-0"
+                    >
+                      {isMerging ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                          <span>Unione...</span>
+                        </>
+                      ) : (
+                        <>
+                          <GitMerge className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span>Importa Dati</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {mergeFeedback && (
+                    <div
+                      role="status"
+                      className={`p-3 rounded-xl text-xs font-semibold flex items-start gap-2 ${
+                        mergeFeedback.ok
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                      }`}
+                    >
+                      {mergeFeedback.ok ? (
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                      )}
+                      <span>{mergeFeedback.message}</span>
+                    </div>
+                  )}
+                </form>
+              </div>
+            )}
           </div>
         )}
 

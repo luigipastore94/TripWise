@@ -1700,4 +1700,43 @@ assert.equal(sanitizedEmpty.customChecklistCategories, undefined, 'Empty customC
 const sanitizedWithCategories = sanitizeTripForCloud({ ...baseTripFixture, customChecklistCategories: [{ id: 'cat_1', label: 'Trekking' }] });
 assert.equal(sanitizedWithCategories.customChecklistCategories.length, 1, 'Non-empty customChecklistCategories must be preserved');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants)');
+// 20. Bugfix Invariants: Concurrent Expense Collaboration & React 18 Reducer Idempotency
+// 20a. Multi-pass Reducer Idempotency: Remote expense addition MUST NEVER be obliterated on double invocation
+const localTripNoExpenses = {
+  ...baseTripFixture,
+  expenses: []
+};
+const remoteTripWithNewExpense = {
+  ...baseTripFixture,
+  expenses: [{ id: 'exp_companion_1', title: 'Pranzo Ramen', amount: 24, paidById: 'mem_companion', splitWith: ['mem_companion', 'mem_user'], currency: 'EUR', date: '2026-11-01', category: 'food' }]
+};
+
+// Snapshot base taken BEFORE reducer execution:
+const baseTripsSnapshotMap = new Map();
+baseTripsSnapshotMap.set(baseTripFixture.inviteCode, { ...baseTripFixture, expenses: [] });
+
+// Pass 1:
+const base1 = baseTripsSnapshotMap.get(baseTripFixture.inviteCode) || null;
+const pass1Result = mergeTrips(base1, localTripNoExpenses, remoteTripWithNewExpense);
+assert.equal(pass1Result.merged.expenses.length, 1, 'Pass 1 must retain the new remote expense');
+assert.equal(pass1Result.merged.expenses[0].id, 'exp_companion_1');
+
+// Pass 2 (Simulating React 18 updater re-running before commit):
+// In the fixed architecture, baseTripsSnapshotMap was NOT mutated during Pass 1
+const base2 = baseTripsSnapshotMap.get(baseTripFixture.inviteCode) || null;
+const pass2Result = mergeTrips(base2, localTripNoExpenses, remoteTripWithNewExpense);
+assert.equal(pass2Result.merged.expenses.length, 1, 'Pass 2 must STILL retain the new remote expense and not treat it as a deletion');
+assert.equal(pass2Result.merged.expenses[0].id, 'exp_companion_1');
+
+// 20b. Bidirectional Sync Safety: Concurrent local and remote expenses preserved without loss
+const localWithMyExpense = {
+  ...baseTripFixture,
+  expenses: [{ id: 'exp_my_coffee', title: 'Caffè', amount: 3, paidById: 'mem_user', splitWith: ['mem_user'], currency: 'EUR', date: '2026-11-01', category: 'food' }]
+};
+const bidirectionalMerge = mergeTrips(base1, localWithMyExpense, remoteTripWithNewExpense);
+assert.equal(bidirectionalMerge.merged.expenses.length, 2, 'Bidirectional sync must preserve both local and remote concurrent expenses');
+assert.ok(bidirectionalMerge.merged.expenses.some((e) => e.id === 'exp_my_coffee'), 'Local expense preserved');
+assert.ok(bidirectionalMerge.merged.expenses.some((e) => e.id === 'exp_companion_1'), 'Remote expense preserved');
+assert.equal(bidirectionalMerge.hasLocalChanges, true, 'Resulting merge has local changes to safely push to cloud');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity)');

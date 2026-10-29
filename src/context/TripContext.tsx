@@ -918,7 +918,17 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsub = subscribeToUserTrips(
       user.uid,
       (remoteTrips, fromCache) => {
+        // Create an immutable snapshot of base trips for this update cycle to guarantee
+        // idempotent 3-way reconciliation across React 18 updater re-evaluations
+        const baseSnapshot = new Map<string, TripData>(lastSyncedTripsRef.current);
+
+        let tripsToPush: TripData[] = [];
+        let tripsToMarkSynced: TripData[] = [];
+        let finalMergedList: TripData[] = [];
+
         setTrips((prev) => {
+          const localTripsToPush: TripData[] = [];
+          const localTripsToMarkSynced: TripData[] = [];
           const mergedMap = new Map<string, TripData>();
 
           // Keep current local trips in map
@@ -945,17 +955,18 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const existing = mergedMap.get(key);
             if (!existing) {
               mergedMap.set(key, rt);
-              updateLastSyncedTrip(rt);
+              localTripsToMarkSynced.push(rt);
             } else {
+              // Ignore stale cache snapshot if local is strictly newer
               if (fromCache && existing.updatedAt >= rt.updatedAt) {
                 continue;
               }
-              const baseTrip = getLastSyncedTrip(key) || existing;
+              const baseTrip = baseSnapshot.get(key) || null;
               const { merged, hasLocalChanges } = mergeTrips(baseTrip, existing, rt);
               mergedMap.set(key, merged);
-              updateLastSyncedTrip(hasLocalChanges ? merged : rt);
+              localTripsToMarkSynced.push(hasLocalChanges ? merged : rt);
               if (hasLocalChanges && isOnline && user?.uid) {
-                pushTripToCloud(merged).catch(() => {});
+                localTripsToPush.push(merged);
               }
             }
           }
@@ -964,7 +975,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // snapshot confirms it is no longer present in the user's trips, remove it locally.
           for (const [key] of mergedMap.entries()) {
             if (!remoteKeys.has(key)) {
-              const wasSynced = getLastSyncedTrip(key);
+              const wasSynced = baseSnapshot.get(key);
               if (wasSynced && fromCache === false) {
                 mergedMap.delete(key);
               }
@@ -975,9 +986,29 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
             (a, b) => b.updatedAt - a.updatedAt
           );
 
-          persistTripsLocally(mergedList);
+          tripsToPush = localTripsToPush;
+          tripsToMarkSynced = localTripsToMarkSynced;
+          finalMergedList = mergedList;
 
-          hydrateTripsWithLocalAttachments(mergedList, { fetchRemoteIfMissing: isOnline })
+          return mergedList;
+        });
+
+        // PURE DECOUPLED SIDE EFFECTS (Executed strictly outside the functional updater):
+        // 1. Update last synced trips ref and persistence
+        for (const syncedTrip of tripsToMarkSynced) {
+          updateLastSyncedTrip(syncedTrip);
+        }
+
+        // 2. Push any local changes to cloud
+        for (const pushTrip of tripsToPush) {
+          pushTripToCloud(pushTrip).catch(() => {});
+        }
+
+        // 3. Persist merged trips locally and hydrate attachments
+        if (finalMergedList.length > 0) {
+          persistTripsLocally(finalMergedList);
+
+          hydrateTripsWithLocalAttachments(finalMergedList, { fetchRemoteIfMissing: isOnline })
             .then(({ hydratedTrips, didChange }) => {
               if (didChange) {
                 applyHydratedAttachments(hydratedTrips);
@@ -985,20 +1016,18 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
             })
             .catch(() => {});
 
-          // If active trip was deleted remotely, switch to the first available trip
+          // 4. Safe fallback for active trip if current was deleted remotely
           setActiveTripId((currentId) => {
-            if (currentId && mergedList.some((t) => t.id === currentId)) {
+            if (currentId && finalMergedList.some((t) => t.id === currentId)) {
               return currentId;
             }
-            const fallback = mergedList[0]?.id ?? '';
+            const fallback = finalMergedList[0]?.id ?? '';
             if (user?.uid) {
               localStorage.setItem(getUserActiveTripStorageKey(user.uid), fallback);
             }
             return fallback;
           });
-
-          return mergedList;
-        });
+        }
 
         setSyncStatus(!isOnline || fromCache ? 'offline-cached' : 'synced');
       },
@@ -1056,6 +1085,9 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(updatedUser);
       persistCachedUser(updatedUser);
 
+      let updatedTripToPush: TripData | null = null;
+      let nextTripsToPersist: TripData[] | null = null;
+
       // Also update the active trip's member with this UID
       setTrips((prev) => {
         const current = prev.find((t) => t.id === activeTripId) ?? prev[0];
@@ -1092,21 +1124,30 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         const next = prev.map((t) => (t.id === current.id ? updatedTrip : t));
-        persistTripsLocally(next);
-
-        if (isCloudAvailable && user.uid) {
-          pushTripToCloud(updatedTrip)
-            .then(() => updateLastSyncedTrip(updatedTrip))
-            .catch(() => {});
-        }
+        updatedTripToPush = updatedTrip;
+        nextTripsToPersist = next;
         return next;
       });
+
+      if (nextTripsToPersist) {
+        persistTripsLocally(nextTripsToPersist);
+      }
+
+      if (updatedTripToPush && isCloudAvailable && user.uid) {
+        const target = updatedTripToPush;
+        pushTripToCloud(target)
+          .then(() => updateLastSyncedTrip(target))
+          .catch(() => {});
+      }
     },
     [user, activeTripId, persistTripsLocally, isCloudAvailable, updateLastSyncedTrip]
   );
 
   const mutateActiveTrip = useCallback(
     (updater: (trip: TripData) => TripData) => {
+      let updatedTripToPush: TripData | null = null;
+      let nextTripsToPersist: TripData[] | null = null;
+
       setTrips((prev) => {
         const current = prev.find((t) => t.id === activeTripId) ?? prev[0];
         if (!current) return prev;
@@ -1119,19 +1160,25 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: Date.now()
         };
         const next = prev.map((t) => (t.id === current.id ? updated : t));
-        persistTripsLocally(next);
-
-        if (isCloudAvailable && user?.uid) {
-          setSyncStatus(isOnline ? 'syncing' : 'offline-cached');
-          pushTripToCloud(updated)
-            .then(() => {
-              setSyncStatus(isOnline ? 'synced' : 'offline-cached');
-              updateLastSyncedTrip(updated);
-            })
-            .catch(() => setSyncStatus('error'));
-        }
+        updatedTripToPush = updated;
+        nextTripsToPersist = next;
         return next;
       });
+
+      if (nextTripsToPersist) {
+        persistTripsLocally(nextTripsToPersist);
+      }
+
+      if (updatedTripToPush && isCloudAvailable && user?.uid) {
+        const targetTrip = updatedTripToPush;
+        setSyncStatus(isOnline ? 'syncing' : 'offline-cached');
+        pushTripToCloud(targetTrip)
+          .then(() => {
+            setSyncStatus(isOnline ? 'synced' : 'offline-cached');
+            updateLastSyncedTrip(targetTrip);
+          })
+          .catch(() => setSyncStatus('error'));
+      }
     },
     [activeTripId, isCloudAvailable, isOnline, persistTripsLocally, updateLastSyncedTrip, user?.uid]
   );
@@ -1361,21 +1408,34 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         let finalTrip = remote;
+        let nextTripsList: TripData[] = [];
+        let tripToPush: TripData | null = null;
+
         setTrips((prev) => {
+          let resolvedTrip = remote;
           const localExisting = prev.find((t) => normalizeInviteCode(t.inviteCode) === normalized);
           if (localExisting) {
             const { merged, hasLocalChanges } = mergeTrips(localExisting, localExisting, remote);
-            finalTrip = merged;
+            resolvedTrip = merged;
             if (hasLocalChanges && isOnline && activeUser?.uid) {
-              pushTripToCloud(merged).catch(() => {});
+              tripToPush = merged;
             }
           }
           const filtered = prev.filter((t) => normalizeInviteCode(t.inviteCode) !== normalized);
-          const next = [finalTrip, ...filtered];
-          persistTripsLocally(next);
-          updateLastSyncedTrip(finalTrip);
+          const next = [resolvedTrip, ...filtered];
+          finalTrip = resolvedTrip;
+          nextTripsList = next;
           return next;
         });
+
+        if (nextTripsList.length > 0) {
+          persistTripsLocally(nextTripsList);
+        }
+        updateLastSyncedTrip(finalTrip);
+        if (tripToPush) {
+          pushTripToCloud(tripToPush).catch(() => {});
+        }
+
         selectTrip(finalTrip.id);
         setSyncStatus(navigator.onLine ? 'synced' : 'offline-cached');
 
@@ -1397,6 +1457,39 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!activeTrip || !user?.uid || !isCloudAvailable) return;
     setSyncStatus('syncing');
     try {
+      const normalizedCode = normalizeInviteCode(activeTrip.inviteCode);
+      if (normalizedCode) {
+        // Safe bidirectional pull-before-push
+        const remote = await fetchTripFromCloud(normalizedCode);
+        if (remote) {
+          const baseTrip = getLastSyncedTrip(normalizedCode);
+          const { merged, hasLocalChanges } = mergeTrips(baseTrip, activeTrip, remote);
+
+          if (hasLocalChanges) {
+            await pushTripToCloud(merged);
+          }
+
+          const targetTrip = hasLocalChanges ? merged : remote;
+          updateLastSyncedTrip(targetTrip);
+
+          let updatedList: TripData[] = [];
+          setTrips((prev) => {
+            const next = prev.map((t) =>
+              normalizeInviteCode(t.inviteCode) === normalizedCode ? targetTrip : t
+            );
+            updatedList = next;
+            return next;
+          });
+
+          if (updatedList.length > 0) {
+            persistTripsLocally(updatedList);
+          }
+
+          setSyncStatus(navigator.onLine ? 'synced' : 'offline-cached');
+          return;
+        }
+      }
+
       await pushTripToCloud(activeTrip);
       setSyncStatus(navigator.onLine ? 'synced' : 'offline-cached');
       updateLastSyncedTrip(activeTrip);
@@ -1404,7 +1497,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Manual cloud sync failed:', err);
       setSyncStatus('error');
     }
-  }, [activeTrip, isCloudAvailable, updateLastSyncedTrip, user?.uid]);
+  }, [activeTrip, isCloudAvailable, getLastSyncedTrip, persistTripsLocally, updateLastSyncedTrip, user?.uid]);
 
   const mergeTripByCode = useCallback(
     async (
@@ -1466,11 +1559,16 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const diffBookings = Math.max(0, postBookings - preBookings);
         const diffActivities = Math.max(0, postActivities - preActivities);
 
+        let nextList: TripData[] = [];
         setTrips((prev) => {
           const next = prev.map((t) => (t.id === consolidatedTrip.id ? consolidatedTrip : t));
-          persistTripsLocally(next);
+          nextList = next;
           return next;
         });
+
+        if (nextList.length > 0) {
+          persistTripsLocally(nextList);
+        }
 
         if (isCloudAvailable && user?.uid) {
           await pushTripToCloud(consolidatedTrip);
