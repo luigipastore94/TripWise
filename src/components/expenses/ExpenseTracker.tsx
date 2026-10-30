@@ -11,7 +11,9 @@ import {
   ShoppingBag,
   Ticket,
   MoreHorizontal,
-  CheckCircle2
+  CheckCircle2,
+  Loader2,
+  CloudOff
 } from 'lucide-react';
 import { useTrip, getLocalTodayIso } from '../../context/TripContext';
 import type { Expense, ExpenseCategory } from '../../types/trip';
@@ -37,8 +39,9 @@ const EXPENSE_CATEGORIES: Record<
 };
 
 export const ExpenseTracker: React.FC = () => {
-  const { activeTrip, upsertExpense, deleteExpense } = useTrip();
+  const { activeTrip, user, isOnline, pendingExpenseIds, upsertExpense, deleteExpense } = useTrip();
   const idPrefix = useId();
+  const pendingSet = new Set(pendingExpenseIds);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -83,7 +86,8 @@ export const ExpenseTracker: React.FC = () => {
     setRawAmount('');
     setCurrency(destinationCurrency);
     setCategory('food');
-    setPaidBy(members[0]?.id ?? '');
+    const matchingUserMember = user?.uid ? members.find((m) => m.uid === user.uid) : undefined;
+    setPaidBy(matchingUserMember?.id ?? members[0]?.id ?? '');
     setSplitIds(members.map((m) => m.id));
     setDate(getLocalTodayIso(0));
     setNotes('');
@@ -285,6 +289,7 @@ export const ExpenseTracker: React.FC = () => {
             const catMeta = EXPENSE_CATEGORIES[exp.category] || EXPENSE_CATEGORIES.other;
             const CatIcon = catMeta.Icon;
             const isForeign = exp.currency.toUpperCase() !== baseCurrency.toUpperCase();
+            const isPendingSync = Boolean(user) && pendingSet.has(exp.id);
 
             return (
               <li
@@ -299,7 +304,28 @@ export const ExpenseTracker: React.FC = () => {
                     <CatIcon className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-bold truncate">{exp.title}</h3>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="text-sm sm:text-base font-bold truncate">{exp.title}</h3>
+                      {isPendingSync && (
+                        isOnline ? (
+                          <span
+                            title="Sincronizzazione con il cloud in corso..."
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700 dark:bg-sky-950/80 dark:text-sky-300 shrink-0"
+                          >
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" aria-hidden="true" />
+                            <span>Invio...</span>
+                          </span>
+                        ) : (
+                          <span
+                            title="Salvata sul dispositivo. Verrà inviata appena torna la connessione."
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 shrink-0"
+                          >
+                            <CloudOff className="w-2.5 h-2.5" aria-hidden="true" />
+                            <span>In coda</span>
+                          </span>
+                        )
+                      )}
+                    </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
                       <span>
                         Pagato da{' '}

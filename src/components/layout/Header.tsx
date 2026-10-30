@@ -7,7 +7,8 @@ import {
   CalendarRange,
   Cloud,
   CloudOff,
-  Loader2
+  Loader2,
+  Users
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
 
@@ -29,6 +30,9 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { activeTrip, tripsLoading, user, isOnline, syncStatus, retryCloudSync } = useTrip();
   const [isRetryingSync, setIsRetryingSync] = useState(false);
+
+  const connectedCount = activeTrip?.memberUids?.length ?? 0;
+  const isSharedTrip = connectedCount >= 2;
 
   const handleSyncClick = async () => {
     setIsRetryingSync(true);
@@ -59,10 +63,26 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
               <div className="text-left min-w-0 flex-1">
-                <div className="flex items-center gap-1 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-sm font-extrabold tracking-tight truncate">
                     {activeTrip.title}
                   </span>
+                  {isSharedTrip ? (
+                    <span
+                      title={`Viaggio condiviso (${connectedCount} persone collegate)`}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 font-bold text-[10px] shrink-0"
+                    >
+                      <Users className="w-2.5 h-2.5" aria-hidden="true" />
+                      <span>{connectedCount}</span>
+                    </span>
+                  ) : user ? (
+                    <span
+                      title="Viaggio personale (nessun compagno collegato)"
+                      className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-semibold text-[10px] shrink-0"
+                    >
+                      Solo tu
+                    </span>
+                  ) : null}
                   <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate">
@@ -74,6 +94,14 @@ export const Header: React.FC<HeaderProps> = ({
                   ) : syncStatus === 'error' ? (
                     <span className="inline-flex items-center gap-0.5 font-bold text-amber-600 dark:text-amber-400 shrink-0">
                       • Sync in sospeso
+                    </span>
+                  ) : syncStatus === 'syncing' || isRetryingSync ? (
+                    <span className="inline-flex items-center gap-0.5 font-bold text-sky-600 dark:text-sky-400 shrink-0">
+                      • Invio in corso...
+                    </span>
+                  ) : syncStatus === 'offline-cached' ? (
+                    <span className="inline-flex items-center gap-0.5 font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                      • In attesa rete
                     </span>
                   ) : syncStatus === 'synced' ? (
                     <span className="inline-flex items-center gap-0.5 font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
@@ -106,10 +134,10 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={handleSyncClick}
               title={
                 syncStatus === 'synced'
-                  ? 'Sincronizzato in tempo reale col compagno. Tocca per aggiornare.'
+                  ? 'Sincronizzato e confermato sul cloud. Tocca per aggiornare.'
                   : syncStatus === 'syncing' || isRetryingSync
-                  ? 'Sincronizzazione in corso...'
-                  : 'Modifiche locali in attesa di sincronizzazione. Tocca per sincronizzare ora.'
+                  ? 'Invio e verifica sul cloud in corso...'
+                  : 'Connessione al cloud o modifiche in attesa. Tocca per sincronizzare ora.'
               }
               aria-label="Stato sincronizzazione cloud"
               className={`min-w-[40px] min-h-[40px] rounded-xl inline-flex items-center justify-center transition-colors ${
@@ -117,7 +145,9 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
                   : syncStatus === 'syncing' || isRetryingSync
                   ? 'text-sky-600 dark:text-sky-400'
-                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-900'
+                  : syncStatus === 'synced'
+                  ? 'text-emerald-600 dark:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-900'
+                  : 'text-amber-600 dark:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-900'
               }`}
             >
               {syncStatus === 'syncing' || isRetryingSync ? (

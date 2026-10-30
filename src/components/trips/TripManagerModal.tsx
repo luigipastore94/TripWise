@@ -705,6 +705,12 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
                 {trips.map((t) => {
                   const isCurrent = activeTrip?.id === t.id;
                   const isPendingDelete = tripPendingDelete?.id === t.id;
+                  const connectedCount = t.memberUids?.length ?? 0;
+                  const isShared = connectedCount >= 2;
+                  const connectedNames = (t.members || [])
+                    .filter((m) => Boolean(m.uid))
+                    .map((m) => m.name)
+                    .join(', ');
 
                   if (isPendingDelete) {
                     return (
@@ -796,16 +802,27 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
                           </span>
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-bold text-base line-clamp-2 break-words" title={t.title}>{t.title}</span>
                             {isCurrent && (
                               <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-600 text-white shrink-0">
                                 Attivo
                               </span>
                             )}
+                            {isShared ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 shrink-0">
+                                <Users className="w-3 h-3" aria-hidden="true" />
+                                <span>Condiviso ({connectedCount})</span>
+                              </span>
+                            ) : user ? (
+                              <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 shrink-0">
+                                Personale (solo tu)
+                              </span>
+                            ) : null}
                           </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {t.destination} • {t.days.length} giorni • Valuta {t.destinationCurrency}
+                            {isShared && connectedNames ? ` • Con: ${connectedNames}` : ''}
                           </div>
                         </div>
                       </button>

@@ -11,14 +11,17 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore,
+  getFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
+  persistentSingleTabManager,
+  memoryLocalCache,
   doc,
   setDoc,
   getDoc,
   getDocs,
   updateDoc,
   deleteDoc,
+  writeBatch,
   collection,
   query,
   where,
@@ -27,9 +30,24 @@ import {
   type Firestore,
   type Unsubscribe
 } from 'firebase/firestore';
-import type { TripData, UserProfile } from '../types/trip';
+import type { TripData, Expense, UserProfile } from '../types/trip';
 import { MEMBER_COLORS } from '../data/presets';
 import { uploadBookingPdfAttachment, deleteBookingPdfAttachment } from './attachmentService';
+import {
+  sanitizeExpenseId,
+  sanitizeExpenseForCloud,
+  sortExpensesDeterministically,
+  mergeExpenseCollections,
+  type CloudSnapshotMeta
+} from '../utils/expenseSync';
+
+export {
+  sanitizeExpenseId,
+  sanitizeExpenseForCloud,
+  sortExpensesDeterministically,
+  mergeExpenseCollections,
+  type CloudSnapshotMeta
+};
 
 let firebaseApp: FirebaseApp | null = null;
 let firestoreDb: Firestore | null = null;
@@ -73,20 +91,41 @@ export function initAuthInstance(): Auth | null {
   return firebaseAuth;
 }
 
+// Tracks expense versions confirmed in the /trips/{code}/expenses subcollection
+const confirmedCloudExpenseKeys = new Set<string>();
+
+function makeExpenseConfirmKey(code: string, exp: Pick<Expense, 'id' | 'updatedAt'>): string {
+  return `${code}:${exp.id}:${exp.updatedAt || 0}`;
+}
+
 export function initFirestoreInstance(): Firestore | null {
   if (firestoreDb) return firestoreDb;
   const app = ensureFirebaseApp();
   if (!app) return null;
 
   try {
+    // Foreground ownership guarantees the active mobile tab/PWA immediately controls the
+    // Firestore network stream without stalling behind frozen background tabs.
     firestoreDb = initializeFirestore(app, {
       localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
+        tabManager: persistentSingleTabManager({ forceOwnership: true })
       })
     });
     return firestoreDb;
   } catch {
-    return null;
+    try {
+      firestoreDb = initializeFirestore(app, {
+        localCache: memoryLocalCache()
+      });
+      return firestoreDb;
+    } catch {
+      try {
+        firestoreDb = getFirestore(app);
+        return firestoreDb;
+      } catch {
+        return null;
+      }
+    }
   }
 }
 
@@ -321,21 +360,172 @@ export async function joinCloudTrip(
     });
   }
 
+  const subExpenses = await fetchTripExpensesFromCloud(code);
+  const combinedExpenses = mergeExpenseCollections(subExpenses, remote.expenses || []);
+
+  if (Array.isArray(remote.expenses) && remote.expenses.length > 0) {
+    migrateLegacyExpensesToSubcollection(code, remote.expenses).catch(() => {});
+  }
+
   return {
     ...remote,
+    expenses: combinedExpenses,
     memberUids: updatedUids,
     members: updatedMembers,
     updatedAt: now
   };
 }
 
-export async function pushTripToCloud(trip: TripData): Promise<void> {
+/**
+ * Atomically writes a single expense document into /trips/{inviteCode}/expenses/{expenseId}.
+ * Eliminates full-trip array overwrites so concurrent collaborator expenses never collide.
+ */
+export async function upsertCloudExpense(inviteCode: string, expense: Expense): Promise<void> {
+  const db = initFirestoreInstance();
+  if (!db) return;
+  const code = normalizeInviteCode(inviteCode);
+  if (!code) return;
+
+  const clean = sanitizeExpenseForCloud(expense);
+  const expRef = doc(db, 'trips', code, 'expenses', clean.id);
+  await setDoc(expRef, clean);
+  confirmedCloudExpenseKeys.add(makeExpenseConfirmKey(code, clean));
+}
+
+/**
+ * Atomically deletes a single expense document from /trips/{inviteCode}/expenses/{expenseId}.
+ */
+export async function deleteCloudExpense(inviteCode: string, expenseId: string): Promise<void> {
+  const db = initFirestoreInstance();
+  if (!db) return;
+  const code = normalizeInviteCode(inviteCode);
+  const cleanId = sanitizeExpenseId(expenseId);
+  if (!code || !cleanId) return;
+
+  const expRef = doc(db, 'trips', code, 'expenses', cleanId);
+  await deleteDoc(expRef);
+}
+
+/**
+ * Fetches all atomic expense documents from /trips/{inviteCode}/expenses.
+ * Gracefully returns [] if caller is not yet a trip member (e.g. pre-join invite preview).
+ */
+export async function fetchTripExpensesFromCloud(inviteCode: string): Promise<Expense[]> {
+  const db = initFirestoreInstance();
+  if (!db) return [];
+  const code = normalizeInviteCode(inviteCode);
+  if (!code) return [];
+
+  try {
+    const snap = await getDocs(collection(db, 'trips', code, 'expenses'));
+    const list = snap.docs.map((d) => d.data() as Expense);
+    if (!snap.metadata.fromCache) {
+      for (const exp of list) {
+        confirmedCloudExpenseKeys.add(makeExpenseConfirmKey(code, exp));
+      }
+    }
+    return sortExpensesDeterministically(list);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * One-time atomic migration: moves legacy expenses stored in parent trip.expenses[]
+ * into /trips/{inviteCode}/expenses/{expenseId} and clears parent.expenses = [] in the same batch.
+ */
+export async function migrateLegacyExpensesToSubcollection(
+  inviteCode: string,
+  legacyExpenses: Expense[]
+): Promise<void> {
+  const db = initFirestoreInstance();
+  if (!db || !Array.isArray(legacyExpenses) || legacyExpenses.length === 0) return;
+  const code = normalizeInviteCode(inviteCode);
+  if (!code) return;
+
+  const parentRef = doc(db, 'trips', code);
+  const sanitizedList = legacyExpenses.filter((e) => Boolean(e?.id)).map(sanitizeExpenseForCloud);
+
+  const CHUNK_SIZE = 400;
+  for (let i = 0; i < Math.max(1, sanitizedList.length); i += CHUNK_SIZE) {
+    const chunk = sanitizedList.slice(i, i + CHUNK_SIZE);
+    const isLastChunk = i + CHUNK_SIZE >= sanitizedList.length;
+    const batch = writeBatch(db);
+    for (const exp of chunk) {
+      batch.set(doc(db, 'trips', code, 'expenses', exp.id), exp);
+    }
+    if (isLastChunk) {
+      batch.update(parentRef, { expenses: [] });
+    }
+    await batch.commit();
+    for (const exp of chunk) {
+      confirmedCloudExpenseKeys.add(makeExpenseConfirmKey(code, exp));
+    }
+  }
+}
+
+/**
+ * Real-time listener on /trips/{inviteCode}/expenses with full pending-writes metadata.
+ */
+export function subscribeToTripExpenses(
+  inviteCode: string,
+  onExpensesUpdated: (expenses: Expense[], meta: CloudSnapshotMeta) => void,
+  onError?: (err: Error) => void
+): Unsubscribe | null {
+  const db = initFirestoreInstance();
+  if (!db) return null;
+  const code = normalizeInviteCode(inviteCode);
+  if (!code) return null;
+
+  const colRef = collection(db, 'trips', code, 'expenses');
+  return onSnapshot(
+    colRef,
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      const pendingDocIds: string[] = [];
+      const expenses = snapshot.docs.map((d) => {
+        const exp = d.data() as Expense;
+        if (d.metadata.hasPendingWrites) {
+          pendingDocIds.push(exp.id || d.id);
+        } else if (!snapshot.metadata.fromCache) {
+          confirmedCloudExpenseKeys.add(makeExpenseConfirmKey(code, exp));
+        }
+        return exp;
+      });
+
+      onExpensesUpdated(sortExpensesDeterministically(expenses), {
+        fromCache: snapshot.metadata.fromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        pendingDocIds
+      });
+    },
+    (error) => {
+      if (onError) onError(error);
+    }
+  );
+}
+
+export async function pushTripToCloud(
+  trip: TripData,
+  options?: { syncAllExpenses?: boolean }
+): Promise<void> {
   const db = initFirestoreInstance();
   if (!db) return;
   const code = normalizeInviteCode(trip.inviteCode);
   if (!code) return;
   const ref = doc(db, 'trips', code);
   let cleanPayload = JSON.parse(JSON.stringify({ ...trip, inviteCode: code })) as TripData;
+
+  // Offload any unconfirmed expenses to the atomic /expenses subcollection and keep parent.expenses = []
+  const expensesToSync = (cleanPayload.expenses || []).filter((exp) => {
+    if (!exp?.id) return false;
+    if (options?.syncAllExpenses) return true;
+    return !confirmedCloudExpenseKeys.has(makeExpenseConfirmKey(code, exp));
+  });
+  cleanPayload = {
+    ...cleanPayload,
+    expenses: []
+  };
 
   // 1. Offload heavy PDF attachments to the dedicated subcollection
   // This guarantees the main trip document never exceeds the 1MB Firestore limit,
@@ -396,7 +586,12 @@ export async function pushTripToCloud(trip: TripData): Promise<void> {
   // 3. Write parent trip document FIRST so the document exists and user UID is in memberUids
   await setDoc(ref, finalPayload, { merge: true });
 
-  // 4. Upload pending PDF attachments to subcollection with guaranteed parent existence
+  // 4. Write any pending/new expenses into atomic /trips/{code}/expenses/{id} subcollection
+  if (expensesToSync.length > 0) {
+    await Promise.all(expensesToSync.map((exp) => upsertCloudExpense(code, exp)));
+  }
+
+  // 5. Upload pending PDF attachments to subcollection with guaranteed parent existence
   if (pdfUploadQueue.length > 0) {
     await Promise.all(
       pdfUploadQueue.map((item) =>
@@ -421,7 +616,13 @@ export async function fetchTripFromCloud(inviteCode: string): Promise<TripData |
   if (!code) return null;
   const snap = await getDoc(doc(db, 'trips', code));
   if (!snap.exists()) return null;
-  return snap.data() as TripData;
+  const data = snap.data() as TripData;
+  const subExpenses = await fetchTripExpensesFromCloud(code);
+  const combinedExpenses = mergeExpenseCollections(subExpenses, data.expenses || []);
+  return {
+    ...data,
+    expenses: combinedExpenses
+  };
 }
 
 export async function fetchUserTripsFromCloud(uid: string): Promise<TripData[]> {
@@ -430,7 +631,21 @@ export async function fetchUserTripsFromCloud(uid: string): Promise<TripData[]> 
   try {
     const q = query(collection(db, 'trips'), where('memberUids', 'array-contains', uid));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data() as TripData);
+    const rawTrips = snap.docs.map((d) => d.data() as TripData);
+    return await Promise.all(
+      rawTrips.map(async (t) => {
+        const code = normalizeInviteCode(t.inviteCode);
+        if (!code) return t;
+        const subExpenses = await fetchTripExpensesFromCloud(code);
+        if (Array.isArray(t.expenses) && t.expenses.length > 0) {
+          migrateLegacyExpensesToSubcollection(code, t.expenses).catch(() => {});
+        }
+        return {
+          ...t,
+          expenses: mergeExpenseCollections(subExpenses, t.expenses || [])
+        };
+      })
+    );
   } catch {
     return [];
   }
@@ -438,7 +653,7 @@ export async function fetchUserTripsFromCloud(uid: string): Promise<TripData[]> 
 
 export function subscribeToCloudTrip(
   inviteCode: string,
-  onRemoteData: (trip: TripData, fromCache: boolean) => void,
+  onRemoteData: (trip: TripData, meta: CloudSnapshotMeta) => void,
   onError?: (err: Error) => void
 ): Unsubscribe | null {
   const db = initFirestoreInstance();
@@ -452,7 +667,11 @@ export function subscribeToCloudTrip(
     { includeMetadataChanges: true },
     (snapshot) => {
       if (snapshot.exists()) {
-        onRemoteData(snapshot.data() as TripData, snapshot.metadata.fromCache);
+        onRemoteData(snapshot.data() as TripData, {
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          pendingDocIds: snapshot.metadata.hasPendingWrites ? [snapshot.id] : []
+        });
       }
     },
     (error) => {
@@ -463,12 +682,12 @@ export function subscribeToCloudTrip(
 
 /**
  * Real-time listener for ALL trips belonging to the authenticated user.
- * Guarantees zero asymmetry between mobile and web devices: any creation, update,
- * or deletion occurring on one device immediately reflects across all active devices.
+ * Reports both `fromCache` and `hasPendingWrites` so unconfirmed local writes
+ * never masquerade as server-verified snapshots.
  */
 export function subscribeToUserTrips(
   uid: string,
-  onTripsUpdated: (trips: TripData[], fromCache: boolean) => void,
+  onTripsUpdated: (trips: TripData[], meta: CloudSnapshotMeta) => void,
   onError?: (err: Error) => void
 ): Unsubscribe | null {
   const db = initFirestoreInstance();
@@ -479,8 +698,18 @@ export function subscribeToUserTrips(
     q,
     { includeMetadataChanges: true },
     (snapshot) => {
-      const trips = snapshot.docs.map((d) => d.data() as TripData);
-      onTripsUpdated(trips, snapshot.metadata.fromCache);
+      const pendingDocIds: string[] = [];
+      const trips = snapshot.docs.map((d) => {
+        if (d.metadata.hasPendingWrites) {
+          pendingDocIds.push(d.id);
+        }
+        return d.data() as TripData;
+      });
+      onTripsUpdated(trips, {
+        fromCache: snapshot.metadata.fromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        pendingDocIds
+      });
     },
     (error) => {
       if (onError) onError(error);
@@ -520,12 +749,13 @@ export async function deleteCloudTrip(trip: TripData, user: UserProfile): Promis
 
   const remainingUids = currentUids.filter((u) => u !== user.uid);
 
-  // 2. If sole member or no other UIDs remain, permanently delete document and attachments
+  // 2. If sole member or no other UIDs remain, permanently delete subcollections and parent document
   if (remainingUids.length === 0) {
     try {
-      await deleteDoc(ref);
-    } catch (err) {
-      console.warn('Failed to delete cloud trip document:', err);
+      const expSnap = await getDocs(collection(db, 'trips', code, 'expenses'));
+      await Promise.all(expSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+    } catch {
+      // ignore
     }
 
     if (Array.isArray(trip.bookings)) {
@@ -534,6 +764,12 @@ export async function deleteCloudTrip(trip: TripData, user: UserProfile): Promis
           deleteBookingPdfAttachment(code, b.id).catch(() => {});
         }
       }
+    }
+
+    try {
+      await deleteDoc(ref);
+    } catch (err) {
+      console.warn('Failed to delete cloud trip document:', err);
     }
     return;
   }

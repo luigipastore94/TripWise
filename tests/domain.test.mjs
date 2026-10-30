@@ -1773,4 +1773,210 @@ const mergeStep3 = mergeTrips(lastSyncedTripDevice1, currentDevice1Trip, remoteS
 assert.equal(mergeStep3.merged.expenses.length, 3, 'Step 3: Device 1 must receive Expense 3 and retain all prior expenses');
 assert.equal(mergeStep3.hasLocalChanges, false, 'No local changes expected on purely incoming remote stream');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization)');
+// 22. Atomic Firestore Subcollection Sync & Truthful Pending-Writes State Machine
+const {
+  deriveTruthfulSyncStatus,
+  sanitizeExpenseForCloud,
+  mergeExpenseCollections,
+  reconcileSubcollectionSnapshot
+} = await import('../src/utils/expenseSync.ts');
+
+// 22a: Truthful Sync Status State Machine (hasPendingWrites & fromCache never masquerade as 'synced')
+const baseSyncInputs = {
+  isCloudAvailable: true,
+  hasUser: true,
+  isOnline: true,
+  syncError: false,
+  inFlightCloudOps: 0,
+  parentSnapInitialized: true,
+  parentFromCache: false,
+  parentHasPendingWrites: false,
+  pendingExpenseCount: 0
+};
+assert.equal(
+  deriveTruthfulSyncStatus(baseSyncInputs),
+  'synced',
+  'Must report synced ONLY when server-confirmed and zero pending writes'
+);
+assert.equal(
+  deriveTruthfulSyncStatus({ ...baseSyncInputs, pendingExpenseCount: 1 }),
+  'syncing',
+  'Pending expense write (hasPendingWrites) must show syncing, NEVER synced'
+);
+assert.equal(
+  deriveTruthfulSyncStatus({ ...baseSyncInputs, parentHasPendingWrites: true }),
+  'syncing',
+  'Pending parent write must show syncing, NEVER synced'
+);
+assert.equal(
+  deriveTruthfulSyncStatus({ ...baseSyncInputs, inFlightCloudOps: 1 }),
+  'syncing',
+  'In-flight cloud Promise must show syncing'
+);
+assert.equal(
+  deriveTruthfulSyncStatus({ ...baseSyncInputs, parentFromCache: true }),
+  'offline-cached',
+  'Unverified local cache snapshot must report offline-cached, NEVER synced'
+);
+assert.equal(
+  deriveTruthfulSyncStatus({ ...baseSyncInputs, parentSnapInitialized: false }),
+  'syncing',
+  'Pre-handshake startup state must report syncing'
+);
+
+// 22b: sanitizeExpenseForCloud strict CEL compliance
+const dirtyExpense = {
+  id: 'exp bad/id#1',
+  title: '  Ramen Ichiran  ',
+  amount: 24.5,
+  currency: 'eur',
+  amountInBase: 24.5,
+  paidByMemberId: 'mem_2',
+  splitBetweenMemberIds: ['mem_1', 'mem_2'],
+  category: 'food',
+  date: '2026-11-22',
+  notes: '   ',
+  updatedAt: 1700000000000
+};
+const cleanedExpense = sanitizeExpenseForCloud(dirtyExpense);
+assert.equal(cleanedExpense.id, 'exp_bad_id_1');
+assert.equal(cleanedExpense.title, 'Ramen Ichiran');
+assert.equal(cleanedExpense.currency, 'EUR');
+assert.equal('notes' in cleanedExpense, false, 'Blank notes must be omitted for clean Firestore documents');
+
+// 22c: Subcollection Real-Time Consecutive Sync + Concurrent Upsert + Remote Deletion + Legacy Preservation
+let dev1LocalExpenses = [
+  {
+    id: 'exp_legacy_volo',
+    title: 'Volo',
+    amount: 1340,
+    currency: 'EUR',
+    amountInBase: 1340,
+    paidByMemberId: 'mem_1',
+    splitBetweenMemberIds: ['mem_1', 'mem_2'],
+    category: 'transport',
+    date: '2026-10-30',
+    updatedAt: 900
+  }
+];
+let dev1KnownCloudIds = new Set();
+const dev1PendingUpserts = new Map();
+const dev1DeletedIds = new Set();
+
+// Step A: Cold cache snapshot (fromCache: true, empty subcollection) MUST NOT drop legacy expense
+const coldCacheRec = reconcileSubcollectionSnapshot({
+  currentLocalExpenses: dev1LocalExpenses,
+  remoteSubcollectionExpenses: [],
+  meta: { fromCache: true, hasPendingWrites: false, pendingDocIds: [] },
+  knownCloudIds: dev1KnownCloudIds,
+  pendingLocalUpserts: dev1PendingUpserts,
+  locallyDeletedIds: dev1DeletedIds
+});
+assert.equal(coldCacheRec.reconciledExpenses.length, 1, 'Cold cache snapshot must preserve local legacy expense');
+assert.equal(coldCacheRec.unpushedLocalExpenses.length, 0, 'Do not trigger push while snapshot is still fromCache');
+
+// Step B: First server snapshot arrives before migration completes — legacy expense preserved & queued for subcollection upload
+const firstServerRec = reconcileSubcollectionSnapshot({
+  currentLocalExpenses: dev1LocalExpenses,
+  remoteSubcollectionExpenses: [],
+  meta: { fromCache: false, hasPendingWrites: false, pendingDocIds: [] },
+  knownCloudIds: dev1KnownCloudIds,
+  pendingLocalUpserts: dev1PendingUpserts,
+  locallyDeletedIds: dev1DeletedIds
+});
+assert.equal(firstServerRec.reconciledExpenses.length, 1);
+assert.equal(firstServerRec.unpushedLocalExpenses.length, 1);
+assert.equal(firstServerRec.unpushedLocalExpenses[0].id, 'exp_legacy_volo');
+
+// Step C: Companion (Device 2) adds Expense 1, then Expense 2, while Device 1 also has an unconfirmed local Expense 3
+const remoteSub1 = [
+  firstServerRec.reconciledExpenses[0],
+  {
+    id: 'exp_d2_first',
+    title: 'Sushi',
+    amount: 40,
+    currency: 'EUR',
+    amountInBase: 40,
+    paidByMemberId: 'mem_2',
+    splitBetweenMemberIds: ['mem_1', 'mem_2'],
+    category: 'food',
+    date: '2026-11-22',
+    updatedAt: 2000
+  },
+  {
+    id: 'exp_d2_second',
+    title: 'Shinkansen',
+    amount: 180,
+    currency: 'EUR',
+    amountInBase: 180,
+    paidByMemberId: 'mem_2',
+    splitBetweenMemberIds: ['mem_1', 'mem_2'],
+    category: 'transport',
+    date: '2026-11-23',
+    updatedAt: 2100
+  }
+];
+const localPendingExp = {
+  id: 'exp_d1_pending',
+  title: 'Matcha',
+  amount: 8,
+  currency: 'EUR',
+  amountInBase: 8,
+  paidByMemberId: 'mem_1',
+  splitBetweenMemberIds: ['mem_1', 'mem_2'],
+  category: 'food',
+  date: '2026-11-23',
+  updatedAt: 2150
+};
+dev1PendingUpserts.set(localPendingExp.id, localPendingExp);
+
+const concurrentRec = reconcileSubcollectionSnapshot({
+  currentLocalExpenses: [...dev1LocalExpenses, localPendingExp],
+  remoteSubcollectionExpenses: remoteSub1,
+  meta: { fromCache: false, hasPendingWrites: false, pendingDocIds: [] },
+  knownCloudIds: dev1KnownCloudIds,
+  pendingLocalUpserts: dev1PendingUpserts,
+  locallyDeletedIds: dev1DeletedIds
+});
+assert.equal(concurrentRec.reconciledExpenses.length, 4, 'All 4 expenses (legacy + 2 consecutive remote + 1 local pending) must coexist');
+assert.equal(concurrentRec.confirmedUpsertIds.length, 0, 'Local pending expense not yet in remote snapshot must remain pending');
+dev1LocalExpenses = concurrentRec.reconciledExpenses;
+dev1KnownCloudIds = concurrentRec.nextKnownCloudIds;
+
+// Step D: Server confirms Device 1's pending expense (hasPendingWrites: false)
+const remoteSub2 = [...remoteSub1, localPendingExp];
+const ackRec = reconcileSubcollectionSnapshot({
+  currentLocalExpenses: dev1LocalExpenses,
+  remoteSubcollectionExpenses: remoteSub2,
+  meta: { fromCache: false, hasPendingWrites: false, pendingDocIds: [] },
+  knownCloudIds: dev1KnownCloudIds,
+  pendingLocalUpserts: dev1PendingUpserts,
+  locallyDeletedIds: dev1DeletedIds
+});
+assert.deepEqual(ackRec.confirmedUpsertIds, ['exp_d1_pending'], 'Server ACK must confirm local pending upsert');
+dev1PendingUpserts.delete('exp_d1_pending');
+dev1LocalExpenses = ackRec.reconciledExpenses;
+dev1KnownCloudIds = ackRec.nextKnownCloudIds;
+
+// Step E: Companion (Device 2) deletes 'exp_d2_first' -> Device 1 honors deletion without resurrecting it
+const remoteSubAfterDelete = remoteSub2.filter((e) => e.id !== 'exp_d2_first');
+const deleteRec = reconcileSubcollectionSnapshot({
+  currentLocalExpenses: dev1LocalExpenses,
+  remoteSubcollectionExpenses: remoteSubAfterDelete,
+  meta: { fromCache: false, hasPendingWrites: false, pendingDocIds: [] },
+  knownCloudIds: dev1KnownCloudIds,
+  pendingLocalUpserts: dev1PendingUpserts,
+  locallyDeletedIds: dev1DeletedIds
+});
+assert.equal(deleteRec.reconciledExpenses.length, 3, 'Remotely deleted subcollection expense must be removed');
+assert.equal(deleteRec.reconciledExpenses.some((e) => e.id === 'exp_d2_first'), false);
+
+// 22d: mergeExpenseCollections prefers newer subcollection update over stale legacy parent entry
+const mergedCol = mergeExpenseCollections(
+  [{ ...dev1LocalExpenses[0], id: 'exp_legacy_volo', amount: 1350, amountInBase: 1350, updatedAt: 5000 }],
+  [{ ...dev1LocalExpenses[0], id: 'exp_legacy_volo', amount: 1340, amountInBase: 1340, updatedAt: 900 }]
+);
+assert.equal(mergedCol.length, 1);
+assert.equal(mergedCol[0].amount, 1350, 'Newer subcollection version must win over legacy parent array item');
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine)');

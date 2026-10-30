@@ -13,7 +13,8 @@ import {
   Cloud,
   CloudOff,
   Loader2,
-  UserCircle2
+  UserCircle2,
+  Users
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
 import type { AppTab } from '../../types/trip';
@@ -44,6 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings
 }) => {
   const { activeTrip, tripsLoading, user, isOnline, syncStatus, signInWithGoogle, retryCloudSync } = useTrip();
+  const connectedCount = activeTrip?.memberUids?.length ?? 0;
+  const isSharedTrip = connectedCount >= 2;
 
   const formatRange = (start?: string, end?: string) => {
     if (!start) return '';
@@ -89,11 +92,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
             <span>Sincronizzazione...</span>
           </span>
+        ) : syncStatus === 'offline-cached' ? (
+          <button
+            type="button"
+            onClick={retryCloudSync}
+            title="Connessione al cloud in verifica. Clicca per sincronizzare ora."
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900 transition-colors"
+          >
+            <Cloud className="w-3 h-3" aria-hidden="true" />
+            <span>In attesa rete</span>
+          </button>
         ) : syncStatus === 'synced' ? (
           <button
             type="button"
             onClick={retryCloudSync}
-            title="Sincronizzato in tempo reale con i tuoi compagni. Clicca per verificare."
+            title="Sincronizzato e confermato sul cloud. Clicca per verificare."
             className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors"
           >
             <Cloud className="w-3 h-3" aria-hidden="true" />
@@ -127,8 +140,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="text-sm font-extrabold line-clamp-2 leading-snug break-words" title={activeTrip.title}>
                   {activeTrip.title}
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                  {activeTrip.destination} • {activeTrip.days.length}g
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  <span className="truncate">
+                    {activeTrip.destination} • {activeTrip.days.length}g
+                  </span>
+                  {isSharedTrip ? (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 font-bold text-[10px]">
+                      <Users className="w-2.5 h-2.5" aria-hidden="true" />
+                      <span>Condiviso ({connectedCount})</span>
+                    </span>
+                  ) : user ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-600 dark:bg-slate-700/80 dark:text-slate-300 font-semibold text-[10px]">
+                      Personale
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>

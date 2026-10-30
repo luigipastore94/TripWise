@@ -43,6 +43,21 @@ rules_version = '2';
 //   - mimeType: string (optional, if present 0..100 chars) - Attachment MIME type (e.g. application/pdf)
 //   - updatedAt: number (required, > 0 and <= 99999999999999) - Unix epoch timestamp in ms
 //
+// Subcollection: trips/{inviteCode}/expenses
+// Document ID: {expenseId} (alphanumeric, hyphens, and underscores, matching ^[a-zA-Z0-9_-]{1,100}$, e.g. exp_m2x9k_8a1b)
+// Fields:
+//   - id: string (required, immutable, 1..100 chars, must equal {expenseId} doc ID) - Unique expense identifier
+//   - title: string (required, 1..200 chars) - Expense description/title
+//   - amount: number (required, >= 0 and <= 1000000000) - Original expense amount
+//   - currency: string (required, 1..10 chars) - Expense currency ISO code (e.g. JPY, EUR)
+//   - amountInBase: number (required, >= 0 and <= 1000000000) - Expense amount converted to trip base currency
+//   - paidByMemberId: string (required, 0..100 chars) - Member identifier who paid the expense
+//   - splitBetweenMemberIds: list of strings (required, size <= 50) - Member identifiers sharing the expense
+//   - category: string (required, 1..40 chars) - Expense category (e.g. food, transport, lodging, shopping, activity, other)
+//   - date: string (required, 0..30 chars) - Expense date string (e.g. YYYY-MM-DD)
+//   - notes: string (optional, if present 0..2000 chars) - Additional expense notes
+//   - updatedAt: number (required, > 0 and <= 99999999999999) - Unix epoch timestamp in ms
+//
 // Collection: daily_quotas
 // Document ID: {dateId} (ISO date string YYYY-MM-DD, matching ^[0-9]{4}-[0-9]{2}-[0-9]{2}$)
 // Fields:
@@ -102,6 +117,12 @@ service cloud.firestore {
     function isValidAttachmentDocId(attachmentId) {
       return attachmentId is string &&
              attachmentId.matches('^[a-zA-Z0-9_-]{1,100}$');
+    }
+
+    // Validate expense document ID pattern (alphanumeric, hyphens, underscores, length 1..100)
+    function isValidExpenseDocId(expenseId) {
+      return expenseId is string &&
+             expenseId.matches('^[a-zA-Z0-9_-]{1,100}$');
     }
 
     // Validate daily quota document ID pattern (ISO date string YYYY-MM-DD)
@@ -294,6 +315,55 @@ service cloud.firestore {
              data.updatedAt <= 99999999999999;
     }
 
+    // Domain Validator for /trips/{inviteCode}/expenses/{expenseId} (Used in BOTH create and update)
+    function isValidExpenseData(data, expenseId) {
+      return hasOnlyAllowedFields(data, [
+               'id',
+               'title',
+               'amount',
+               'currency',
+               'amountInBase',
+               'paidByMemberId',
+               'splitBetweenMemberIds',
+               'category',
+               'date',
+               'notes',
+               'updatedAt'
+             ]) &&
+             hasRequiredFields(data, [
+               'id',
+               'title',
+               'amount',
+               'currency',
+               'amountInBase',
+               'paidByMemberId',
+               'splitBetweenMemberIds',
+               'category',
+               'date',
+               'updatedAt'
+             ]) &&
+             data.id is string &&
+             data.id == expenseId &&
+             isValidString(data.id, 1, 100) &&
+             isValidString(data.title, 1, 200) &&
+             isNumber(data.amount) &&
+             data.amount >= 0 &&
+             data.amount <= 1000000000 &&
+             isValidString(data.currency, 1, 10) &&
+             isNumber(data.amountInBase) &&
+             data.amountInBase >= 0 &&
+             data.amountInBase <= 1000000000 &&
+             isValidString(data.paidByMemberId, 0, 100) &&
+             isValidList(data.splitBetweenMemberIds, 50) &&
+             (data.splitBetweenMemberIds.size() == 0 || isValidString(data.splitBetweenMemberIds[0], 0, 100)) &&
+             isValidString(data.category, 1, 40) &&
+             isValidString(data.date, 0, 30) &&
+             (!('notes' in data) || isValidString(data.notes, 0, 2000)) &&
+             isNumber(data.updatedAt) &&
+             data.updatedAt > 0 &&
+             data.updatedAt <= 99999999999999;
+    }
+
     // Domain Validator for /daily_quotas/{dateId} (Used in BOTH create and update)
     function isValidDailyQuotaData(data) {
       return data.keys().hasOnly(['count', 'updatedAt']) &&
@@ -354,6 +424,31 @@ service cloud.firestore {
 
         // Members of the parent trip can delete attachment chunks
         // (also allows cleaning up orphaned attachments if parent trip document was deleted)
+        allow delete: if isTripMember(inviteCode) ||
+                         (isAuthenticated() && !exists(/databases/$(database)/documents/trips/$(inviteCode)));
+      }
+
+      // =============================================================
+      // Subcollection Rules: /trips/{inviteCode}/expenses/{expenseId}
+      // =============================================================
+
+      match /expenses/{expenseId} {
+        // Members of the parent trip can read (get and list) collaborative trip expenses
+        allow get, list: if isTripMember(inviteCode);
+
+        // Members of the parent trip can create expense documents with valid schema
+        allow create: if isTripMember(inviteCode) &&
+                         isValidExpenseDocId(expenseId) &&
+                         isValidExpenseData(request.resource.data, expenseId);
+
+        // Members of the parent trip can update expense documents with immutable id and valid schema
+        allow update: if isTripMember(inviteCode) &&
+                         isValidExpenseDocId(expenseId) &&
+                         areImmutableFieldsUnchanged(['id']) &&
+                         isValidExpenseData(request.resource.data, expenseId);
+
+        // Members of the parent trip can delete expense documents
+        // (also allows cleaning up orphaned expenses if parent trip document was deleted)
         allow delete: if isTripMember(inviteCode) ||
                          (isAuthenticated() && !exists(/databases/$(database)/documents/trips/$(inviteCode)));
       }

@@ -2,7 +2,17 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const buildTimestampLabel = new Intl.DateTimeFormat('it-IT', {
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit'
+}).format(new Date());
+
 export default defineConfig({
+  define: {
+    __APP_BUILD_LABEL__: JSON.stringify(buildTimestampLabel)
+  },
   plugins: [
     react(),
     VitePWA({
@@ -29,6 +39,7 @@ export default defineConfig({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
