@@ -671,6 +671,288 @@ Il 07/05 mercato dei fiori Bloemenmarkt, Rijksmuseum e volo di ritorno alle 20:4
         { term: 'Gaia', requiresCoords: true }
       ]
     }
+  },
+
+  // 21. Italia: Sicilia Orientale & Barocco (Apposizioni, note e colloquialismi)
+  {
+    id: 'it-sicily-roadtrip',
+    name: 'Italia: Sicilia Orientale, Barocco & Isole (7 Giorni)',
+    region: 'Europa',
+    text: `08-14 Settembre: Tour della Sicilia Orientale
+- 08/09: Volo per Catania Fontanarossa ore 10:15. Ritiro auto a noleggio. Passeggiata in centro a Catania, piazza del Duomo e sosta per arancino al volo da Savia.
+- 09/09: Escursione sull'Etna presto la mattina (scarpe da trekking consigliate) fino ai Crateri Silvestri. Pomeriggio a Taormina, visita al Teatro Antico con vista mare.
+- 10/09: Spostamento verso Siracusa. Visita di Ortigia, splendido centro storico sull'isola, e Duomo di Siracusa. Sera cena di pesce lungo il porto.
+- 11/09: Noto, capitale del barocco siciliano (palazzo Nicolaci e cattedrale di San Nicolò). Pomeriggio relax alla spiaggia di Calamosche.
+- 12/09: Visita a Ragusa Ibla, suggestivo borgo arroccato, e Modica per assaggio del famoso cioccolato artigianale.
+- 13/09: Valle dei Templi ad Agrigento, patrimonio mondiale UNESCO. Tramonto mozzafiato al tempio della Concordia.
+- 14/09: Rientro a Catania, passeggiata al mercato del pesce (Pescheria) e volo di ritorno ore 18:30.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-09-08',
+      endDate: '2026-09-14',
+      dayCount: 7,
+      presetId: 'europe',
+      currency: 'EUR',
+      minActivities: 15,
+      keyLandmarks: [
+        { term: 'Fontanarossa', requiresCoords: true },
+        { term: 'Savia', expectedCategory: 'food', requiresCoords: true },
+        { term: 'Etna', requiresCoords: true },
+        { term: 'Teatro Antico', requiresCoords: true },
+        { term: 'Ortigia', requiresCoords: true },
+        { term: 'Duomo di Siracusa', requiresCoords: true },
+        { term: 'Nicolaci', requiresCoords: true },
+        { term: 'Calamosche', expectedCategory: 'relax', requiresCoords: true },
+        { term: 'Ragusa Ibla', requiresCoords: true },
+        { term: 'Modica', expectedCategory: 'food', requiresCoords: true },
+        { term: 'Valle dei Templi', requiresCoords: true },
+        { term: 'Concordia', requiresCoords: true },
+        { term: 'Pescheria', expectedCategory: 'food', requiresCoords: true }
+      ]
+    }
+  },
+
+  // 22. Mitteleuropa: Vienna, Praga e Budapest in Treno
+  {
+    id: 'eu-mitteleuropa-train',
+    name: 'Mitteleuropa: Vienna, Praga e Budapest in Treno (7 Giorni)',
+    region: 'Europa',
+    text: `18-24 Maggio: Mitteleuropa Imperiale (Vienna, Praga, Budapest)
+- 18/05: Arrivo all'aeroporto di Vienna Schwechat ore 11:20. Trasferimento in centro con treno CAT. Pomeriggio: Duomo di Santo Stefano (Stephansdom) e sosta alla pasticceria Demel per assaggio Sacher Torte.
+- 19/05: Mattina: Castello e giardini di Schönbrunn (ore 09:30). Pomeriggio: Palazzo del Belvedere e Museo di Klimt. Sera: passeggiata lungo il Ring.
+- 20/05: Treno Railjet da Wien Hauptbahnhof a Praha hlavní nádraží (Praha hl.n.) ore 09:10. Pomeriggio a Praga: Piazza della Città Vecchia con Orologio Astronomico e tramonto su Ponte Carlo.
+- 21/05: Visita al Castello di Praga (Cattedrale di San Vito e Vicolo d'Oro). Pomeriggio: quartiere ebraico di Josefov con le sinagoghe storiche. Cena tradizionale boema con birra Pilsner.
+- 22/05: Treno EuroCity da Praha hl.n. per Budapest Nyugati ore 08:45. Arrivo a Budapest nel primo pomeriggio. Bagno termale rilassante alle Terme Széchenyi.
+- 23/05: Mattina: Bastione dei Pescatori e Chiesa di Mattia sulla collina di Buda. Pomeriggio: maestoso Parlamento di Budapest lungo il Danubio. Sera: crociera serale con luci sulla città.
+- 24/05: Mercato Centrale di Budapest (Nagyvásárcsarnok) per shopping gastronomico e volo di rientro dall'aeroporto di Budapest Liszt Ferenc ore 17:40.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-05-18',
+      endDate: '2026-05-24',
+      dayCount: 7,
+      presetId: 'europe',
+      currency: 'EUR',
+      minActivities: 16,
+      keyLandmarks: [
+        { term: 'Schwechat', requiresCoords: true },
+        { term: 'Stephansdom', requiresCoords: true },
+        { term: 'Demel', expectedCategory: 'food', requiresCoords: true },
+        { term: 'Schönbrunn', requiresCoords: true },
+        { term: 'Belvedere', requiresCoords: true },
+        { term: 'Praha hl', requiresCoords: true },
+        { term: 'Orologio Astronomico', requiresCoords: true },
+        { term: 'Ponte Carlo', requiresCoords: true },
+        { term: 'Castello di Praga', requiresCoords: true },
+        { term: 'Josefov', requiresCoords: true },
+        { term: 'Budapest Nyugati', requiresCoords: true },
+        { term: 'Széchenyi', expectedCategory: 'relax', requiresCoords: true },
+        { term: 'Bastione dei Pescatori', requiresCoords: true },
+        { term: 'Chiesa di Mattia', requiresCoords: true },
+        { term: 'Parlamento di Budapest', requiresCoords: true },
+        { term: 'Nagyvásárcsarnok', expectedCategory: 'food', requiresCoords: true },
+        { term: 'Liszt Ferenc', requiresCoords: true }
+      ]
+    }
+  },
+
+  // 23. Giappone: Alpi Giapponesi & Chubu (Soste intermedie, Shinkansen e condizionali)
+  {
+    id: 'jp-alps-chubu',
+    name: 'Giappone: Alpi Giapponesi & Chubu (6 Giorni)',
+    region: 'Asia',
+    text: `14-19 Ottobre: Alpi Giapponesi & Tradizione (Tokyo, Matsumoto, Takayama, Shirakawa-go, Kanazawa)
+- 14/10: Partenza da Tokyo con Shinkansen per Nagano e treno espresso per Matsumoto ore 08:30. Visita al Castello di Matsumoto (il Corvo Nero) e pranzo con soba tradizionale. Proseguimento in bus panoramico per Takayama attraverso le Alpi.
+- 15/10: Mattina: mercati mattutini di Takayama (Miyagawa Morning Market) lungo il fiume e centro storico Sanmachi Suji. Pomeriggio: villaggio museo Hida no Sato (se piove visitare invece il Museo dei Carri Takayama Matsuri Yatai Kaikan).
+- 16/10: Spostamento in bus per Shirakawa-go (ore 09:15). Passeggiata tra le case tradizionali gassho-zukuri del villaggio di Ogimachi e salita al punto panoramico Shiroyama. Nel tardo pomeriggio bus per Kanazawa.
+- 17/10: Kanazawa: splendido giardino Kenroku-en ore 09:00 e Villa Seisonkaku. Pomeriggio: quartiere dei samurai di Nagamachi (casa Nomura) e distretto delle geishe Higashi Chaya con degustazione di tè matcha e foglia d'oro.
+- 18/10: Mercato Omicho per pranzo a base di sashimi freschissimo. Pomeriggio al Museo d'Arte Contemporanea del XXI Secolo (Piscina di Leandro Erlich). Cena kaiseki e pernottamento a Kanazawa.
+- 19/10: Shinkansen Kagayaki diretto da Kanazawa per Tokyo Station ore 10:15 e volo di rientro da Haneda ore 18:50.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-10-14',
+      endDate: '2026-10-19',
+      dayCount: 6,
+      presetId: 'japan',
+      currency: 'JPY',
+      minActivities: 16,
+      keyLandmarks: [
+        { term: 'Matsumoto', requiresCoords: true },
+        { term: 'Miyagawa', requiresCoords: true },
+        { term: 'Yatai Kaikan', requiresCoords: true },
+        { term: 'Ogimachi', requiresCoords: true },
+        { term: 'Shiroyama', requiresCoords: true },
+        { term: 'Kenroku', requiresCoords: true },
+        { term: 'Higashi Chaya', requiresCoords: true },
+        { term: 'Omicho', expectedCategory: 'food', requiresCoords: true },
+        { term: 'XXI Secolo', requiresCoords: true },
+        { term: 'Kagayaki', requiresCoords: true }
+      ]
+    }
+  },
+
+  // 24. USA: Southwest Canyon & Grandi Parchi (Parchi e nomi composti)
+  {
+    id: 'us-southwest-canyons',
+    name: 'USA: Southwest Canyons & Parchi (7 Giorni)',
+    region: 'Americhe',
+    text: `12-18 Settembre: USA Southwest Canyon & Parchi (Las Vegas, Zion, Bryce, Page, Monument Valley, Grand Canyon)
+- 12/09: Arrivo all'aeroporto di Las Vegas Harry Reid ore 13:45. Ritiro auto SUV 4x4. Spostamento verso Springdale con vista sulle formazioni rocciose di Zion. Notte a Springdale.
+- 13/09: Parco Nazionale di Zion: escursione mattutina lungo il sentiero The Narrows (scarpe da fiume) e vista su Angels Landing. Nel pomeriggio trasferimento verso Bryce Canyon. Tramonto mozzafiato a Sunset Point.
+- 14/09: Alba spettacolare a Bryce Canyon (Sunrise Point) tra i celebri hoodoos e anfiteatro naturale. Partenza per Page. Nel pomeriggio: Horseshoe Bend con affaccio sul fiume Colorado dall'alto.
+- 15/09: Visita guidata imperdibile all'Antelope Canyon Lower ore 09:30 tra le gole di roccia rossa modellate dall'acqua. Spostamento verso la Monument Valley con tour in fuoristrada tra i monoliti Navajo e tramonto al The View.
+- 16/09: Partenza presto dalla Monument Valley verso il Grand Canyon National Park South Rim. Passeggiata lungo il Rim Trail e sosta panoramica a Mather Point.
+- 17/09: Volo panoramico in elicottero sul Grand Canyon ore 09:00. Rientro verso Las Vegas lungo la storica Route 66 con sosta a Seligman. Serata tra i casinò della Strip di Las Vegas.
+- 18/09: Mattina shopping outlet a Las Vegas e volo di rientro da Las Vegas Harry Reid ore 17:30.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-09-12',
+      endDate: '2026-09-18',
+      dayCount: 7,
+      presetId: 'usa',
+      currency: 'USD',
+      minActivities: 16,
+      keyLandmarks: [
+        { term: 'Harry Reid', requiresCoords: true },
+        { term: 'Zion', requiresCoords: true },
+        { term: 'Bryce', requiresCoords: true },
+        { term: 'Horseshoe Bend', requiresCoords: true },
+        { term: 'Antelope', requiresCoords: true },
+        { term: 'Monument Valley', requiresCoords: true },
+        { term: 'Grand Canyon', requiresCoords: true },
+        { term: 'Route 66', requiresCoords: true },
+        { term: 'Strip', requiresCoords: true }
+      ]
+    }
+  },
+  {
+    id: 'eu-scandinavia-design',
+    name: 'Scandinavia: Stoccolma e Copenaghen (5 Giorni)',
+    text: `06-10 Novembre: Scandinavia Design & Capitali (Stoccolma e Copenaghen)
+- 06/11: Volo serale per Stoccolma Arlanda ore 20:30. Treno rapido Arlanda Express per Stoccolma Centralen. Check-in notturno in hotel ore 23:45.
+- 07/11: Mattina: passeggiata nella città vecchia Gamla Stan e Palazzo Reale di Stoccolma. Pausa fika con kanelbulle al Café Chokladkoppen. Pomeriggio: visita al Museo Vasa con l'antico galeone seicentesco intatto.
+- 08/11: Treno veloce SJ da Stoccolma Centralen a Copenaghen attraverso il ponte di Øresund ore 08:20. Arrivo a Copenaghen Stazione Centrale. Pomeriggio tra le casette colorate di Nyhavn e sosta alla Sirenetta.
+- 09/11: Mattina: Palazzo di Amalienborg (cambio della guardia ore 12:00) e quartiere di Christianshavn. Pomeriggio al parco divertimenti Giardini di Tivoli illuminato per la stagione. Cena con smørrebrød tradizionale.
+- 10/11: Castello di Rosenborg e gioielli della corona. Volo di rientro dall'aeroporto di Copenaghen Kastrup ore 18:15.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-11-06',
+      endDate: '2026-11-10',
+      dayCount: 5,
+      presetId: 'europe',
+      currency: 'SEK',
+      minActivities: 14,
+      keyLandmarks: [
+        { term: 'Arlanda', requiresCoords: true },
+        { term: 'Stockholm Centralen', requiresCoords: true },
+        { term: 'Gamla Stan', requiresCoords: true },
+        { term: 'Kungliga Slottet', requiresCoords: true },
+        { term: 'Café Chokladkoppen', requiresCoords: true },
+        { term: 'Vasamuseet', requiresCoords: true },
+        { term: 'København H', requiresCoords: true },
+        { term: 'Nyhavn', requiresCoords: true },
+        { term: 'Sirenetta', requiresCoords: true },
+        { term: 'Amalienborg', requiresCoords: true },
+        { term: 'Christianshavn', requiresCoords: true },
+        { term: 'Tivoli', requiresCoords: true },
+        { term: 'Rosenborg', requiresCoords: true },
+        { term: 'Kastrup', requiresCoords: true }
+      ]
+    }
+  },
+  {
+    id: 'sea-bali-islands',
+    name: 'Indonesia: Bali & Isole Nusa (5 Giorni)',
+    text: `01-05 Ottobre: Incanto di Bali & Isole Nusa
+- 01/10: Arrivo all'aeroporto internazionale Ngurah Rai di Denpasar ore 14:20. Trasferimento privato a Ubud e check-in al resort nella giungla. Passeggiata serale tra le bancarelle del mercato tradizionale di Ubud.
+- 02/10: Sveglia antelucana e partenza ore 04:00 per il trekking all'alba sul Monte Batur con colazione vista cratere. Pomeriggio: visita alla Foresta delle Scimmie Sacre di Ubud (Monkey Forest). Cena balinese a base di bebek betutu.
+- 03/10: Risaie a terrazza di Tegallalang e altalena panoramica. Nel pomeriggio trasferimento al tempio di Tanah Lot per ammirare il tramonto sull'oceano ore 17:30.
+- 04/10: Escursione in motoscafo veloce da Sanur a Nusa Penida ore 08:00. Visita alla spettacolare spiaggia di Kelingking Beach (T-Rex) e tuffo a Crystal Bay. Rientro in battello a Sanur nel tardo pomeriggio.
+- 05/10: Mattina di relax con massaggio tradizionale balinese a Seminyak. Ultimo shopping di souvenir prima del volo di rientro dall'aeroporto di Denpasar DPS ore 21:30.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-10-01',
+      endDate: '2026-10-05',
+      dayCount: 5,
+      presetId: 'custom',
+      currency: 'IDR',
+      minActivities: 14,
+      keyLandmarks: [
+        { term: 'Ngurah Rai', requiresCoords: true },
+        { term: 'Ubud', requiresCoords: true },
+        { term: 'Monte Batur', requiresCoords: true },
+        { term: 'Foresta delle Scimmie', requiresCoords: true },
+        { term: 'Tegallalang', requiresCoords: true },
+        { term: 'Tanah Lot', requiresCoords: true },
+        { term: 'Sanur', requiresCoords: true },
+        { term: 'Nusa Penida', requiresCoords: true },
+        { term: 'Seminyak', requiresCoords: true }
+      ]
+    }
+  },
+  {
+    id: 'chat-informal-tuscany',
+    name: 'Italia: Bozza Toscana WhatsApp con Correzioni (3 Giorni)',
+    text: `Bozza viaggio Toscana per il ponte:
+- Sabato 25/04: Partenza in auto da Milano ore 07:30. Arrivo a Lucca per le 11:00, passeggiata sulle mura cinquecentesche. Pranzo con tortelli lucchesi all'Osteria Baralla. Pomeriggio: noleggio bici (ricordarsi di prenotare online!). Spostamento a Pisa per vedere la Torre Pendente al tramonto. Pernottamento in agriturismo a Volterra.
+- Domenica 26/04: Mattina giro per il borgo di Volterra e visita al Museo Etrusco Guarnacci. Per pranzo panino veloce da cacio e baccelli, anzi no facciamo una sosta con degustazione di Vernaccia a San Gimignano. Pomeriggio tra le torri medievali di San Gimignano e gelato alla Gelateria Dondoli.
+- Lunedì 27/04: Siena: Piazza del Campo e Duomo di Siena. Pranzo con pici senesi al ragù di cinghiale. Rientro verso Milano nel tardo pomeriggio con arrivo per le 20:30.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-04-25',
+      endDate: '2026-04-27',
+      dayCount: 3,
+      presetId: 'europe',
+      currency: 'EUR',
+      minActivities: 11,
+      keyLandmarks: [
+        { term: 'Milano', requiresCoords: true },
+        { term: 'Lucca', requiresCoords: true },
+        { term: 'Mura', requiresCoords: true },
+        { term: 'Baralla', requiresCoords: true },
+        { term: 'Torre Pendente', requiresCoords: true },
+        { term: 'Guarnacci', requiresCoords: true },
+        { term: 'San Gimignano', requiresCoords: true },
+        { term: 'Dondoli', requiresCoords: true },
+        { term: 'Piazza del Campo', requiresCoords: true },
+        { term: 'Duomo di Siena', requiresCoords: true }
+      ]
+    }
+  },
+  {
+    id: 'au-nye-roadtrip',
+    name: 'Australia: Capodanno a Sydney & Melbourne (8 Giorni)',
+    text: `28 Dicembre - 04 Gennaio: Capodanno a Sydney & Melbourne
+- 28/12: Volo e arrivo a Sydney Kingsford Smith ore 18:00. Check-in all'hotel a Circular Quay con vista porto.
+- 29/12: Mattina: visita guidata alla Sydney Opera House e passeggiata ai Royal Botanic Garden. Pomeriggio: surf e relax a Bondi Beach con camminata costiera fino a Coogee.
+- 30/12: Giornata dedicata alle Blue Mountains: Three Sisters e Scenic World. Rientro a Sydney in serata per cena a The Rocks.
+- 31/12: Mattina al Sydney Harbour Bridge (BridgeClimb). Pomeriggio di attesa e picnic a Mrs Macquarie's Chair per il grande spettacolo dei fuochi d'artificio di Capodanno a mezzanotte.
+- 01/01: Mattinata di riposo. Volo interno Qantas da Sydney a Melbourne Tullamarine ore 15:30. Passeggiata serale tra i laneway di Street Art di Melbourne (Hosier Lane).
+- 02/01: Tour della Great Ocean Road: Twelve Apostles e Loch Ard Gorge. Rientro a Melbourne in tarda serata.
+- 03/01: Melbourne: National Gallery of Victoria e giro al Queen Victoria Market. Caffè espresso nei caffè storici di Flinders Lane.
+- 04/01: Ultimi acquisti e volo intercontinentale di rientro da Melbourne MEL ore 19:40.`,
+    options: { referenceYear: 2026 },
+    expected: {
+      startDate: '2026-12-28',
+      endDate: '2027-01-04',
+      dayCount: 8,
+      presetId: 'custom',
+      currency: 'AUD',
+      minActivities: 14,
+      keyLandmarks: [
+        { term: 'Sydney Kingsford Smith', requiresCoords: true },
+        { term: 'Circular Quay', requiresCoords: true },
+        { term: 'Sydney Opera House', requiresCoords: true },
+        { term: 'Bondi Beach', requiresCoords: true },
+        { term: 'Blue Mountains', requiresCoords: true },
+        { term: 'Sydney Harbour Bridge', requiresCoords: true },
+        { term: 'Mrs Macquarie', requiresCoords: true },
+        { term: 'Hosier Lane', requiresCoords: true },
+        { term: 'Great Ocean Road', requiresCoords: true },
+        { term: 'Twelve Apostles', requiresCoords: true },
+        { term: 'Queen Victoria Market', requiresCoords: true },
+        { term: 'Melbourne Tullamarine', requiresCoords: true }
+      ]
+    }
   }
 ];
 

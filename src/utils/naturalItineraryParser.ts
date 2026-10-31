@@ -96,7 +96,7 @@ function enumerateIsoRange(startIso: string, endIso: string): string[] {
 }
 
 function smartTitleCase(text: string): string {
-  const trimmed = text.trim();
+  const trimmed = (text || '').trim();
   if (!trimmed) return '';
   if (trimmed === trimmed.toUpperCase() && trimmed.length <= 18) {
     return trimmed
@@ -114,10 +114,19 @@ function lookupCityInfo(rawName: string): CityInfo | undefined {
   let bestMatch: CityInfo | undefined;
   let bestLen = 0;
   for (const [k, info] of Object.entries(CITY_CATALOG)) {
-    const isShort = k.length <= 4;
-    const re = isShort
-      ? new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-      : new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    // Avoid false matching 'porto' when used as Italian noun (harbor/port)
+    if (k === 'porto') {
+      const isHarborNoun =
+        /\b(?:lungo\s+il|al|del|nel|dal|sul|in|di)\s+porto\b/i.test(key) ||
+        /\bporto\s+(?:turistico|canale|vecchio|antico|mercantile|passeggeri)\b/i.test(key) ||
+        /\b(?:porto|porto\s+di)\s+(?:catania|napoli|palermo|ancona|genova|livorno|civitavecchia|brindisi|bari|trieste|venezia)\b/i.test(key);
+      if (isHarborNoun && !/\bportogallo\b/i.test(key)) {
+        continue;
+      }
+    }
+
+    const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${escaped}\\b`, 'i');
     if (re.test(key)) {
       if (k.length > bestLen) {
         bestLen = k.length;
@@ -132,12 +141,31 @@ export function normalizeDiacritics(str: string): string {
   return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
-function lookupKnownPlace(rawText: string): KnownPlaceEntry | undefined {
+function lookupKnownPlace(rawText: string, contextCity?: string): KnownPlaceEntry | undefined {
   if (!rawText) return undefined;
   const lower = rawText.trim().toLowerCase();
   const normText = normalizeDiacritics(lower);
   let bestMatch: KnownPlaceEntry | undefined;
   let bestLen = 0;
+
+  const GENERIC_KEYWORDS = new Set([
+    'mercato del pesce',
+    'mercato',
+    'centro storico',
+    'lungomare',
+    'porto',
+    'castello',
+    'palazzo reale',
+    'cattedrale',
+    'duomo',
+    'parco',
+    'giardino',
+    'teatro',
+    'spiaggia',
+    'noleggio bici',
+    'noleggio biciclette',
+    'bici'
+  ]);
 
   for (const entry of KNOWN_PLACES_DB) {
     for (const kw of entry.keywords) {
@@ -153,6 +181,15 @@ function lookupKnownPlace(rawText: string): KnownPlaceEntry | undefined {
         : new RegExp(normKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
       if (reLower.test(lower) || reNorm.test(normText)) {
+        // If keyword is generic, guard against cross-country/city hallucination
+        if (GENERIC_KEYWORDS.has(kw.toLowerCase()) && contextCity) {
+          const entryLoc = (entry.locationName || '').toLowerCase();
+          const target = contextCity.toLowerCase();
+          if (!entryLoc.includes(target) && !entry.canonicalName.toLowerCase().includes(target)) {
+            continue;
+          }
+        }
+
         if (kw.length > bestLen) {
           bestLen = kw.length;
           bestMatch = entry;
@@ -197,9 +234,9 @@ function extractTimeAndCleanText(raw: string): {
     working = working.replace(rangeTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
-  // 2. Explicit time with prefix: "ore 12.50", "ore 08:30", "ore 16", "alle 9:15", "h 14.00"
+  // 2. Explicit time with prefix: "ore 12.50", "ore 08:30", "ore 16", "alle 9:15", "h 14.00", "per le 11:00", "verso le 20:30"
   if (!explicitTime) {
-    const prefixedTimeRe = /\b(?:ore|alle|h)\s*(\d{1,2})(?:[:.](\d{2}))?\b/i;
+    const prefixedTimeRe = /\b(?:con\s+arrivo\s+)?(?:ore|alle|h|per\s+le|verso\s+le|intorno\s+alle|circa\s+alle|fino\s+alle)\s*(\d{1,2})(?:[:.](\d{2}))?\b/i;
     const pm = working.match(prefixedTimeRe);
     if (pm) {
       const hh = Math.min(Math.max(Number(pm[1]), 0), 23);
@@ -237,13 +274,16 @@ function extractTimeAndCleanText(raw: string): {
     timeBucket = 'sunset';
     extraNote = extraNote ? `${extraNote}; Fino al tramonto.` : 'Permanenza fino al tramonto.';
     working = working.replace(/\bfino\s+al\s+tramonto\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+  } else if (/\b(?:nel\s+)?tardo\s+pomeriggio\b/i.test(working)) {
+    timeBucket = 'late_afternoon';
+    working = working.replace(/\b(?:nel\s+)?tardo\s+pomeriggio\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
   } else if (/\b(?:nel\s+)?pomeriggio\b/i.test(working)) {
     timeBucket = 'afternoon';
     working = working.replace(/\b(?:nel\s+)?pomeriggio\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
-  } else if (/\b(?:in\s+|di\s+)?sera(?:ta)?(?:\s*\(light-up\))?|light-up\b/i.test(working)) {
+  } else if (/\b(?:in\s+|di\s+)?sera(?:ta|le)?(?:\s*\(light-up\))?|light-up\b/i.test(working)) {
     timeBucket = 'evening';
     working = working
-      .replace(/\b(?:in\s+|di\s+)?sera(?:ta)?(?:\s*\(light-up\))?|light-up\b/gi, ' ')
+      .replace(/\b(?:in\s+|di\s+)?sera(?:ta|le)?(?:\s*\(light-up\))?|light-up\b/gi, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim();
   } else if (/\b(?:di\s+|la\s+)?mattina\b/i.test(working)) {
@@ -251,35 +291,56 @@ function extractTimeAndCleanText(raw: string): {
     working = working.replace(/\b(?:di\s+|la\s+)?mattina\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
-  working = working.replace(/^[,;:\-–—\s]+|[,;:\-–—\s]+$/g, '').trim();
+  working = working
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\b(?:con\s+arrivo|arrivo\s+previsto|arrivo)?\s*(?:per\s+le|verso\s+le|alle|ore|h)\s*$/i, '')
+    .replace(/\s+([.,;:])/g, '$1')
+    .replace(/^[,;:\-–—\s.]+|[,;:\-–—\s.]+$/g, '')
+    .trim();
   return { explicitTime, timeBucket, cleanedText: working, extraNote };
 }
 
 function inferCategory(text: string, fallback: ActivityCategory = 'sightseeing'): ActivityCategory {
   const lower = text.toLowerCase();
+  // Strip "al volo" (on the fly) to prevent false transport matching with "volo" (flight)
+  const lowerWithoutFalseTransport = lower.replace(/\b(?:al\s+volo|un\s+salto\s+al\s+volo)\b/gi, ' ');
+
+  // Prioritize food when explicit culinary terms are present
   if (
-    /\b(arrivo|atterraggio|volo|aeroporto|airtrain|rientro|ritorno|trasferimento|partenza|spostamento|treno|frecciarossa|lner|alfa\s+pendular|shinkansen|traghetto|ferry|battello|bus|navetta|noleggio\s+auto|4x4|auto\s+a\s+noleggio|riconsegna\s+auto|crociera|funicolare|funivia|cabinovia|gondola)\b/i.test(
+    /\b(arancin[oi]|cannol[oi]|pizza|pizze|cioccolat[oa]|assaggio|degustazione|pranzo|cena|colazione|aperitivo|street\s*food|ristorante|trattoria|osteria|pasticceria|bar|vino|cantina|tapas|pici|bistecca|pecorino|paella|pad\s+thai|ramen|sushi|bloemenmarkt|fika|kanelbulle|smørrebrød|smorrebrod|birra|pilsner|birreria|café|caffè|merenda|snack|torta|gelato|gelateria|bistrot|bebek\s+betutu|tortelli)\b/i.test(
       lower
+    )
+  ) {
+    if (!/\b(?:volo\s+di\s+rientro|volo\s+di\s+ritorno|atterraggio|partenza\s+volo)\b/i.test(lowerWithoutFalseTransport)) {
+      return 'food';
+    }
+  }
+
+  if (
+    /\b(arrivo|atterraggio|volo|aeroporto|airtrain|rientro|ritorno|trasferimento|partenza|spostamento|treno|frecciarossa|lner|alfa\s+pendular|shinkansen|traghetto|ferry|battello|motoscafo|speed\s*boat|bus|navetta|noleggio\s+auto|4x4|auto\s+a\s+noleggio|riconsegna\s+auto|crociera|funicolare|funivia|cabinovia|gondola|arlanda\s+express|sj|railjet|eurocity|eurostar)\b/i.test(
+      lowerWithoutFalseTransport
     )
   ) {
     return 'transport';
   }
   if (
-    /\b(hotel|check-in|check-out|ryokan|alloggio|notte\s+(?:a|in)|pernottamento|riad|resort|accampamento|b&b|ostello|guesthouse)\b/i.test(
+    /\b(hotel|check-in|check-out|ryokan|alloggio|notte\s+(?:a|in)|pernottamento|riad|resort|accampamento|b&b|ostello|guesthouse|albergo|pensione)\b/i.test(
       lower
     )
   ) {
     return 'lodging';
   }
   if (
-    /\b(cerimonia\s+del\s+t[eè]|maikoya|onsen|terme|spa|saturnia|blue\s+lagoon|massaggio|sorgenti\s+termali|bagno|relax|spiaggia|cammellata)\b/i.test(
+    /\b(cerimonia\s+del\s+t[eè]|maikoya|onsen|terme|spa|saturnia|blue\s+lagoon|massaggio|sorgenti\s+termali|bagno|relax|spiaggia|cammellata|altalena)\b/i.test(
       lower
     )
   ) {
     return 'relax';
   }
   if (
-    /\b(pranzo|cena|colazione|mercato|ramen|sushi|street\s*food|ristorante|trattoria|osteria|degustazione|vino|cantina|tapas|pici|bistecca|pecorino|paella|pad\s+thai|bloemenmarkt)\b/i.test(
+    /\b(pranzo|cena|colazione|mercato|ramen|sushi|street\s*food|ristorante|trattoria|osteria|degustazione|vino|cantina|tapas|pici|bistecca|pecorino|paella|pad\s+thai|bloemenmarkt|fika|kanelbulle|smørrebrød|smorrebrod|birra|pilsner|birreria|café|caffè|merenda|snack|torta|gelato|gelateria|bistrot|bebek\s+betutu|tortelli)\b/i.test(
       lower
     )
   ) {
@@ -352,7 +413,9 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
     };
   }
 
-  const monthNamesPattern = Object.keys(MONTH_NAMES).join('|');
+  const monthNamesPattern = Object.keys(MONTH_NAMES)
+    .sort((a, b) => b.length - a.length)
+    .join('|');
 
   // 0b. Explicit Day label with attached date:
   // e.g. "Giorno 1 - 15/09: Roma Antica", "Giorno 1 (15/09): ...", "Giorno 1 (10/05): ...", "Giorno 1 - 15 Ottobre: ..."
@@ -613,7 +676,7 @@ function buildActivityFromDescription(
   const { explicitTime, timeBucket, cleanedText, extraNote } = extractTimeAndCleanText(rawDesc);
   const cleanLabel = cleanedText.replace(/^(?:vedere|visitare|inserire|fare)\s+/i, '').trim();
 
-  const known = lookupKnownPlace(cleanLabel);
+  const known = lookupKnownPlace(cleanLabel, baseCity);
   const cityInfo = lookupCityInfo(baseCity);
 
   let defaultTime = known?.defaultTime || '10:00';
@@ -675,11 +738,22 @@ function buildActivityFromDescription(
 
   // Handle lodging check-in / sistemazione
   if (/^(?:check-in|sistemazione(?:\s+in\s+alloggio|\s+in\s+hotel|\s+in\s+riad)?)\b/i.test(cleanLabel)) {
+    const locMatch = cleanLabel.match(/^(?:check-in|sistemazione)\s+(?:in\s+alloggio|in\s+hotel|in\s+riad|all['’]hotel|al\s+resort)?\s*(?:a|in)\s+(.+)$/i);
+    const targetPlace = locMatch ? locMatch[1].trim() : '';
+    const placeKnown = targetPlace ? lookupKnownPlace(targetPlace, baseCity) : undefined;
+    const placeCity = targetPlace ? lookupCityInfo(targetPlace) : undefined;
+
     return {
       id: makeId('act'),
       time: options?.overrideTime || explicitTime || '13:30',
-      title: 'Check-in in alloggio / hotel',
-      locationName: cityInfo ? `${cityInfo.canonical}` : 'Alloggio',
+      title: placeKnown?.canonicalName
+        ? `Check-in hotel a ${placeKnown.canonicalName}`
+        : placeCity
+          ? `Check-in hotel a ${placeCity.canonical}`
+          : 'Check-in in alloggio / hotel',
+      locationName: placeKnown?.locationName || (placeCity ? `${placeCity.canonical}, ${placeCity.countryName}` : (cityInfo ? `${cityInfo.canonical}` : 'Alloggio')),
+      lat: placeKnown?.lat ?? placeCity?.lat,
+      lng: placeKnown?.lng ?? placeCity?.lng,
       category: 'lodging',
       notes: extraNote || 'Posare i bagagli e rinfrescarsi prima delle visite.',
       completed: false
@@ -689,11 +763,12 @@ function buildActivityFromDescription(
   // Handle semantic transport phrases cleanly ("atterraggio alle 12:00", "arrivo a tokyo", "trasferimento a Kyoto", "volo di rientro da Osaka")
   const isArrival = /^(?:atterraggio|arrivo(?:\s+del\s+volo)?)\b/i.test(cleanLabel);
   if (isArrival) {
-    if (known && known.lat && known.lng && !/aeroporto/i.test(known.canonicalName)) {
+    if (known && known.lat && known.lng) {
+      const airportPrefix = /aeroporto/i.test(known.canonicalName) ? "all'" : ': ';
       return {
         id: makeId('act'),
         time: explicitTime || options?.overrideTime || '12:00',
-        title: `Arrivo: ${known.canonicalName}`,
+        title: `Arrivo ${airportPrefix}${known.canonicalName}`,
         locationName: known.locationName,
         lat: known.lat,
         lng: known.lng,
@@ -705,9 +780,12 @@ function buildActivityFromDescription(
 
     const cityInText = lookupCityInfo(cleanLabel) || lookupCityInfo(baseCity);
     const destMatch = cleanLabel.match(
-      /^(?:atterraggio|arrivo(?:\s+del\s+volo)?)\s+(?:a|in|ad|all['’]aeroporto\s+(?:di\s+)?|all[eoa’']|agli|ai|al)\s*([^,.;]+)/i
+      /^(?:atterraggio|arrivo(?:\s+del\s+volo)?)\s+(?:all['’]aeroporto\s+(?:di\s+)?|all[eoa’']|a|in|ad|agli|ai|al)\s*([^,.;]+)/i
     );
-    const inferredDest = destMatch ? smartTitleCase(destMatch[1].trim()) : undefined;
+    const rawDest = destMatch
+      ? destMatch[1].replace(/^(?:l['’]|il\s+|lo\s+|la\s+|gli\s+|le\s+)/i, '').trim()
+      : undefined;
+    const inferredDest = rawDest ? smartTitleCase(rawDest) : undefined;
     const destCanonical =
       cityInText?.canonical || inferredDest || (baseCity ? smartTitleCase(baseCity) : 'Destinazione');
     return {
@@ -763,35 +841,81 @@ function buildActivityFromDescription(
     };
   }
 
-  if (known) {
-    const mergedNotes = [options?.extraNotes, extraNote, known.notes].filter(Boolean).join(' ');
-    return {
-      id: makeId('act'),
-      time: finalTime,
-      title: known.canonicalName,
-      locationName: known.locationName,
-      lat: known.lat,
-      lng: known.lng,
-      category: options?.overrideCategory || known.defaultCategory || inferCategory(cleanLabel),
-      notes: mergedNotes || undefined,
-      completed: false
-    };
-  }
-
-  const isSightseeingVisit = /\bper\s+(?:visitare|vedere)\b/i.test(cleanLabel);
+  const isSightseeingVisit = /\bper\s+(?:visitare|vedere|ammirare|assistere|godersi)\b/i.test(cleanLabel);
   const transferMatch = !isSightseeingVisit
-    ? cleanLabel.match(/^(?:trasferimento|spostamento|treno|partenza)\s+(?:da\s+(.+?)\s+)?(?:(?:a|per|verso|in)\s+)?(.+)$/i)
+    ? cleanLabel.match(
+        /^(?:(trasferimento|spostamento|partenza)(?:\s+in\s+(?:auto|macchina|bus|pullman|treno))?|(?:(?:(?:escursione|gita|tour|viaggio)\s+(?:in|con)\s+)?(treno|shinkansen|motoscafo|battello|traghetto|ferry|aliscafo|barca)(?:\s+(?:veloce|rapido|diretto|notturno|regionale|panoramico|ad\s+alta\s+velocit[aà]))?(?:\s+(arlanda\s+express|sj|railjet|eurocity|eurostar|frecciarossa|frecciargento|frecciabianca|italo|shinkansen|ice|tgv|lner|alfa\s+pendular|kagayaki|nozomi|hikari|kodama|hayabusa))?(?:\s+(?:veloce|rapido|diretto|notturno|regionale|panoramico|ad\s+alta\s+velocit[aà]))?))\s+(?:da\s+(.+?)\s+(?:a|per|verso|in)\s+(.+)|da\s+(.+)|(?:(?:a|per|verso|in)\s+)?(.+))$/i
+      )
     : null;
 
   if (transferMatch) {
-    const rawFrom = transferMatch[1]?.trim();
-    const rawTo = transferMatch[2]?.split('.')[0].trim();
+    const isGenericTransfer = !!transferMatch[1];
+    const rawBrand = transferMatch[3]?.trim();
+    const transType = (transferMatch[2] || '').toLowerCase();
+    const trainBrand = rawBrand
+      ? smartTitleCase(rawBrand)
+      : transType === 'shinkansen'
+        ? 'Shinkansen'
+        : undefined;
+
+    const rawFrom = transferMatch[4]?.trim() || transferMatch[6]?.trim();
+    let cleanedTo = (transferMatch[5] || transferMatch[7] || '').replace(/\.\s*$/, '').trim();
+    let routeNote: string | undefined;
+    const routeMatch = cleanedTo.match(/\s+(?:attraverso|passando\s+per|via)\s+(.+)$/i);
+    if (routeMatch) {
+      routeNote = `Percorso ${routeMatch[0].trim()}.`;
+      cleanedTo = cleanedTo.slice(0, routeMatch.index).trim();
+    }
+    const rawTo = cleanedTo;
+
     const toCity = lookupCityInfo(rawTo);
     const fromCity = rawFrom ? lookupCityInfo(rawFrom) : undefined;
-    const destLabel = toCity?.canonical || smartTitleCase(rawTo);
-    const title = fromCity
-      ? `Treno da ${fromCity.canonical} a ${destLabel}`
-      : `Trasferimento a ${destLabel}`;
+    const toKnown = lookupKnownPlace(rawTo, baseCity);
+    const fromKnown = rawFrom ? lookupKnownPlace(rawFrom, baseCity) : undefined;
+
+    const destLabel = toKnown?.canonicalName || toCity?.canonical || (rawTo ? smartTitleCase(rawTo) : 'Destinazione');
+    const fromLabel =
+      fromKnown?.canonicalName ||
+      fromCity?.canonical ||
+      (rawFrom ? smartTitleCase(rawFrom) : undefined);
+
+    let title: string;
+    if (!rawTo && rawFrom) {
+      title = `Partenza da ${fromLabel}`;
+    } else if (isGenericTransfer) {
+      title = fromLabel
+        ? `Trasferimento da ${fromLabel} a ${destLabel}`
+        : `Trasferimento a ${destLabel}`;
+    } else if (transType === 'motoscafo' || transType === 'battello' || transType === 'traghetto' || transType === 'ferry' || transType === 'aliscafo' || transType === 'barca') {
+      const vehicle = smartTitleCase(transType);
+      title = fromLabel
+        ? `${vehicle} da ${fromLabel} a ${destLabel}`
+        : `${vehicle} per ${destLabel}`;
+    } else if (trainBrand === 'Arlanda Express') {
+      title = fromLabel
+        ? `Treno Arlanda Express da ${fromLabel} a ${destLabel}`
+        : `Arlanda Express per ${destLabel}`;
+    } else {
+      title = trainBrand
+        ? fromLabel
+          ? `Treno ${trainBrand} da ${fromLabel} a ${destLabel}`
+          : `Treno ${trainBrand} per ${destLabel}`
+        : fromLabel
+          ? `Treno da ${fromLabel} a ${destLabel}`
+          : `Treno per ${destLabel}`;
+    }
+
+    const locName = !rawTo && rawFrom
+      ? (fromKnown?.locationName || (fromCity ? `${fromCity.canonical}, ${fromCity.countryName}` : fromLabel!))
+      : (toKnown?.locationName || (toCity ? `Stazione ${toCity.canonical}` : destLabel));
+    const lat = !rawTo && rawFrom
+      ? (fromKnown?.lat ?? fromCity?.stationOrAirportLat ?? fromCity?.lat)
+      : (toKnown?.lat ?? toCity?.stationOrAirportLat ?? toCity?.lat);
+    const lng = !rawTo && rawFrom
+      ? (fromKnown?.lng ?? fromCity?.stationOrAirportLng ?? fromCity?.lng)
+      : (toKnown?.lng ?? toCity?.stationOrAirportLng ?? toCity?.lng);
+
+    const mergedNotes = [options?.extraNotes, extraNote, routeNote].filter(Boolean).join(' ');
 
     return {
       id: makeId('act'),
@@ -806,11 +930,36 @@ function buildActivityFromDescription(
               ? '15:00'
               : '10:30'),
       title,
-      locationName: toCity ? `Stazione ${toCity.canonical}` : destLabel,
-      lat: toCity?.lat,
-      lng: toCity?.lng,
+      locationName: locName,
+      lat,
+      lng,
       category: 'transport',
-      notes: extraNote || options?.extraNotes,
+      notes: mergedNotes || undefined,
+      completed: false
+    };
+  }
+
+  if (known) {
+    const inferred = inferCategory(cleanLabel);
+    const isFoodActivityInSightseeingCity =
+      inferred === 'food' &&
+      known.defaultCategory === 'sightseeing' &&
+      /\b(degustazione|pranzo|cena|aperitivo|assaggio|colazione|mangiare|pizza|vino|birra|panino)\b/i.test(
+        cleanLabel
+      );
+
+    const mergedNotes = [options?.extraNotes, extraNote, known.notes].filter(Boolean).join(' ');
+    return {
+      id: makeId('act'),
+      time: finalTime,
+      title: isFoodActivityInSightseeingCity ? smartTitleCase(cleanLabel) : known.canonicalName,
+      locationName: known.locationName,
+      lat: known.lat,
+      lng: known.lng,
+      category: isFoodActivityInSightseeingCity
+        ? 'food'
+        : options?.overrideCategory || known.defaultCategory || inferred,
+      notes: mergedNotes || undefined,
       completed: false
     };
   }
@@ -818,24 +967,33 @@ function buildActivityFromDescription(
   // Check if the label itself is simply a known city name (e.g. "Hiroshima" in "Hiroshima + Miyajima")
   const standaloneCity = lookupCityInfo(cleanLabel);
   if (standaloneCity && cleanLabel.split(/\s+/).length <= 2) {
-    const firstSuggestion = standaloneCity.freeDaySuggestions?.[0];
-    if (firstSuggestion) {
-      return {
-        id: makeId('act'),
-        time: explicitTime || options?.overrideTime || firstSuggestion.time,
-        title: firstSuggestion.title,
-        locationName: firstSuggestion.locationName,
-        lat: firstSuggestion.lat,
-        lng: firstSuggestion.lng,
-        category: firstSuggestion.category,
-        notes: [options?.extraNotes, extraNote, firstSuggestion.notes].filter(Boolean).join(' ') || undefined,
-        completed: false
-      };
+    const isPrepCity = /^(?:a|in|ad)\s+/i.test(cleanLabel);
+    if (!isPrepCity) {
+      const firstSuggestion = standaloneCity.freeDaySuggestions?.[0];
+      if (firstSuggestion) {
+        return {
+          id: makeId('act'),
+          time: explicitTime || options?.overrideTime || firstSuggestion.time,
+          title: firstSuggestion.title,
+          locationName: firstSuggestion.locationName,
+          lat: firstSuggestion.lat,
+          lng: firstSuggestion.lng,
+          category: firstSuggestion.category,
+          notes: [options?.extraNotes, extraNote, firstSuggestion.notes].filter(Boolean).join(' ') || undefined,
+          completed: false
+        };
+      }
     }
+    const titleVerb =
+      timeBucket === 'afternoon' || timeBucket === 'late_afternoon'
+        ? `Pomeriggio a ${standaloneCity.canonical}`
+        : timeBucket === 'evening'
+          ? `Serata a ${standaloneCity.canonical}`
+          : `Visita di ${standaloneCity.canonical}`;
     return {
       id: makeId('act'),
       time: finalTime,
-      title: `Visita di ${standaloneCity.canonical}`,
+      title: titleVerb,
       locationName: `${standaloneCity.canonical}, ${standaloneCity.countryName}`,
       lat: standaloneCity.lat,
       lng: standaloneCity.lng,
@@ -925,7 +1083,7 @@ function segmentLineIntoActivities(rawText: string, baseCity: string): Activity[
 function segmentPhrases(blockText: string, baseCity: string, inheritedTimeHeader?: string): Activity[] {
   // Split on semicolons or chain arrows/words
   const rawParts = blockText
-    .split(/\s*;\s*|\s+e\s+poi\s+|\s+poi\s+|\s*(?:->|→|⇒)\s*|\s+\+\s+/i)
+    .split(/\s*;\s*|\s+e\s+poi\s+|\s+poi\s+|\s*(?:->|→|⇒)\s*|\s+\+\s+|\s+prima\s+(?:del?|di)\s+(?=(?:volo|partenza|rientro|treno|traghetto|aeroporto))/i)
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -934,13 +1092,24 @@ function segmentPhrases(blockText: string, baseCity: string, inheritedTimeHeader
   for (const part of rawParts) {
     // Split sentences inside part: ". " followed by capital letter or keyword
     const sentences = part
-      .split(/\.\s+(?=[A-ZÀ-Ú0-9]|Mattina|Pomeriggio|Sera|Notte|Poi|Check-in|Volo|Treno|Ritiro|Bagno|Salita|Visita|Passeggiata|Escursione|Piazza|Santuario|Tempio|Castello|Parco|Museo|Crociera|Teatro)/)
+      .split(
+        /\.\s+(?=[A-ZÀ-Ú0-9]|Mattina|Pomeriggio|Sera|Notte|Poi|Per\s+|Check-in|Volo|Treno|Ritiro|Bagno|Salita|Visita|Passeggiata|Escursione|Piazza|Santuario|Tempio|Castello|Parco|Museo|Crociera|Teatro)/
+      )
       .map((s) => s.trim())
       .filter(Boolean);
 
     for (const sent of sentences) {
+      // Handle change of mind / plan correction within a sentence: e.g. "panino veloce..., anzi no facciamo una sosta con degustazione..."
+      let effectiveSent = sent;
+      const correctionMatch = sent.match(
+        /^(.+?)\s*,\s*(?:anzi\s+no|oppure\s+no|invece)\s*[,;:]?\s*(?:facciamo|andiamo|preferiamo|meglio|optiamo\s+per)?\s*(.+)$/i
+      );
+      if (correctionMatch) {
+        effectiveSent = correctionMatch[2].trim();
+      }
+
       // Check if sentence lists multiple known POIs separated by commas or " e "
-      const poiSplits = splitSentenceByKnownPOIs(sent);
+      const poiSplits = splitSentenceByKnownPOIs(effectiveSent);
       if (poiSplits.length > 1) {
         for (const piece of poiSplits) {
           const textWithTime = inheritedTimeHeader && !extractTimeAndCleanText(piece).timeBucket && !extractTimeAndCleanText(piece).explicitTime
@@ -949,9 +1118,9 @@ function segmentPhrases(blockText: string, baseCity: string, inheritedTimeHeader
           activities.push(buildActivityFromDescription(textWithTime, baseCity));
         }
       } else {
-        const textWithTime = inheritedTimeHeader && !extractTimeAndCleanText(sent).timeBucket && !extractTimeAndCleanText(sent).explicitTime
-          ? `${inheritedTimeHeader}: ${sent}`
-          : sent;
+        const textWithTime = inheritedTimeHeader && !extractTimeAndCleanText(effectiveSent).timeBucket && !extractTimeAndCleanText(effectiveSent).explicitTime
+          ? `${inheritedTimeHeader}: ${effectiveSent}`
+          : effectiveSent;
         activities.push(buildActivityFromDescription(textWithTime, baseCity));
       }
     }
@@ -972,14 +1141,108 @@ function isRecognizedActivityFragment(fragment: string): boolean {
   if (timeInfo.explicitTime || timeInfo.timeBucket) return true;
   // 4. Action keywords
   const actionRe =
-    /\b(arrivo|atterraggio|volo|rientro|ritorno|partenza|trasferimento|spostamento|treno|tram|bus|shinkansen|traghetto|ferry|crociera|cabinovia|funivia|funicolare|check-in|sistemazione|alloggio|hotel|riad|ryokan|noleggio|bici|auto|4x4|passeggiata|visita|escursione|salita|camminata|degustazione|pranzo|cena|aperitivo|colazione|mercato|tempio|santuario|castello|parco|museo|chiesa|cattedrale|basilica|piazza|palazzo|giardino|spiaggia|dune|deserto|terme|laguna|cascata|lago|torre|ponte|strada|quartiere|teatro|monastero)\b/i;
+    /\b(arrivo|atterraggio|volo|rientro|ritorno|partenza|trasferimento|spostamento|treno|tram|bus|shinkansen|traghetto|ferry|battello|motoscafo|crociera|cabinovia|funivia|funicolare|check-in|sistemazione|alloggio|hotel|riad|ryokan|noleggio|bici|auto|4x4|passeggiata|visita|escursione|salita|camminata|degustazione|pranzo|cena|aperitivo|colazione|mercato|tempio|santuario|castello|parco|museo|chiesa|cattedrale|basilica|piazza|palazzo|giardino|giardini|spiaggia|dune|deserto|terme|laguna|cascata|lago|torre|ponte|strada|quartiere|teatro|monastero|sosta|pausa|fotografia|foto|statua|caldera|altalena|mura)\b/i;
   if (actionRe.test(trimmed)) return true;
+  return false;
+}
+
+function splitRespectingParentheses(
+  str: string,
+  delimiterType: 'comma' | 'conjunction' = 'comma'
+): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+
+    if (depth === 0) {
+      if (delimiterType === 'comma' && (ch === ',' || ch === ';')) {
+        if (current.trim()) parts.push(current.trim());
+        current = '';
+        continue;
+      } else if (delimiterType === 'conjunction') {
+        const remaining = str.slice(i);
+        const conjMatch = remaining.match(/^(\s+(?:e|ed|and|\+)\s+)/i);
+        if (conjMatch) {
+          if (current.trim()) parts.push(current.trim());
+          current = '';
+          i += conjMatch[1].length - 1;
+          continue;
+        }
+      }
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function shouldProtectFromConjunctionSplit(text: string): boolean {
+  if (
+    /\b(?:volo|partenza)\s+(?:e|ed)\s+(?:arrivo|atterraggio)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:mattina|pomeriggio|serata|giornata)\s+di\s+[a-zà-ú']+\s+(?:e|ed)\s+(?:picnic|relax|visite?|passeggiata|shopping)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:castello|palazzo|villa|reggia)\s+(?:[a-zà-ú']+\s+)*(?:e|ed)\s+(?:gioielli|tesoro|parco|giardini|museo|fontane)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:piazza|chiesa|cattedrale|basilica)\s+(?:e|ed)\s+(?:campanile|cupola|battistero)\s+(?:di|del|della)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:risaie|terrazze)\s+(?:[a-zà-ú']+\s+)*(?:e|ed)\s+(?:altalena|swing)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isDescriptiveApposition(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+  if (/^(?:splendid[oa]|suggestiv[oa]|famos[oa]|not[oa]|incantevole|caratteristic[oa]|bellissim[oa]|meraviglios[oa]|storico|storica|antico|antica)\b/i.test(lower)) {
+    return true;
+  }
+  if (/^(?:patrimonio\s+(?:mondiale\s+)?unesco|sito\s+unesco|patrimonio\s+dell['’]umanit[aà])\b/i.test(lower)) {
+    return true;
+  }
+  if (/^(?:capitale\s+del|cuore\s+(?:antico|storico|pulsante)|borgo\s+(?:arroccato|medievale|marinaro|storico))\b/i.test(lower)) {
+    return true;
+  }
+  if (/^(?:il\s+centro\s+storico|centro\s+storico)\s+(?:su|di|tra|nel|dell|sull)\b/i.test(lower)) {
+    return true;
+  }
+  if (/^(?:perla\s+del|gioiello\s+del|immerso\s+nel|affacciat[oa]\s+sul?)\b/i.test(lower)) {
+    return true;
+  }
   return false;
 }
 
 function splitSentenceByKnownPOIs(sentence: string): string[] {
   // If sentence has an introductory theme before a colon (e.g. "Gita a Sintra: ...", "Escursione: ...")
-  const colonMatch = sentence.match(/^([^:]{4,50})\s*:\s*(.+)$/);
+  // Guard against colons inside times like 11:00 or 08:30
+  const colonMatch = sentence.match(/^([^:]{3,48}?[^:\d])\s*:\s*(?!\d{2}\b)(.+)$/);
   if (colonMatch) {
     const rightSide = colonMatch[2].trim();
     const rightSplits = splitSentenceByKnownPOIs(rightSide);
@@ -988,29 +1251,65 @@ function splitSentenceByKnownPOIs(sentence: string): string[] {
     }
   }
 
-  // Split on commas
-  const commaParts = sentence.split(/,\s*/).map((p) => p.trim()).filter(Boolean);
+  // Split on commas outside parentheses, merging descriptive appositions into the preceding element
+  const rawParts = splitRespectingParentheses(sentence, 'comma');
+  const commaParts: string[] = [];
+  for (const part of rawParts) {
+    const { mainBody, parenBody } = splitOuterParentheses(part);
+    if (parenBody) {
+      const subPieces = parenBody
+        .split(/\s+(?:e|ed|and|\+)\s+|,\s*/i)
+        .map((p) => p.replace(/^(?:e|ed|and)\s+/i, '').trim())
+        .filter(Boolean);
+      const recognizedSubs = subPieces.filter(isRecognizedActivityFragment);
+      if (
+        recognizedSubs.length >= 2 ||
+        (recognizedSubs.length >= 1 && isDescriptiveApposition(mainBody))
+      ) {
+        if (mainBody && !isDescriptiveApposition(mainBody)) {
+          commaParts.push(mainBody);
+        }
+        commaParts.push(...subPieces);
+        continue;
+      }
+    }
+
+    if (commaParts.length > 0 && isDescriptiveApposition(part)) {
+      commaParts[commaParts.length - 1] = `${commaParts[commaParts.length - 1]} (${part})`;
+    } else {
+      commaParts.push(part);
+    }
+  }
+
   const result: string[] = [];
 
   for (const cp of commaParts) {
-    // Inside each comma part, split on conjunctions " e " / " ed " / " and " / " + "
-    const andPieces = cp
-      .split(/\s+(?:e|ed|and|\+)\s+/i)
-      .map((p) => p.trim())
+    if (shouldProtectFromConjunctionSplit(cp)) {
+      result.push(cp.replace(/^(?:e|ed|and)\s+/i, '').trim());
+      continue;
+    }
+
+    // Inside each comma part, split on conjunctions OUTSIDE parentheses
+    const andPieces = splitRespectingParentheses(cp, 'conjunction')
+      .map((p) => p.replace(/^(?:e|ed|and)\s+/i, '').trim())
       .filter(Boolean);
 
     if (andPieces.length > 1) {
       const recognizedCount = andPieces.filter(isRecognizedActivityFragment).length;
-      if (
-        recognizedCount >= 2 ||
-        (recognizedCount >= 1 && andPieces.every((p) => p.split(/\s+/).length >= 2))
-      ) {
+      if (recognizedCount === andPieces.length) {
+        const resolvedNames = andPieces
+          .map((p) => lookupKnownPlace(p)?.canonicalName)
+          .filter(Boolean);
+        if (resolvedNames.length > 1 && new Set(resolvedNames).size === 1) {
+          result.push(cp.replace(/^(?:e|ed|and)\s+/i, '').trim());
+          continue;
+        }
         result.push(...andPieces);
         continue;
       }
     }
 
-    result.push(cp);
+    result.push(cp.replace(/^(?:e|ed|and)\s+/i, '').trim());
   }
 
   if (result.length > 1 && result.some(isRecognizedActivityFragment)) {
@@ -1018,16 +1317,21 @@ function splitSentenceByKnownPOIs(sentence: string): string[] {
   }
 
   // If no commas, check if sentence has conjunctions connecting multiple activities
-  const andPieces = sentence
-    .split(/\s+(?:e|ed|and|\+)\s+/i)
-    .map((p) => p.trim())
+  if (shouldProtectFromConjunctionSplit(sentence)) {
+    return [sentence];
+  }
+  const andPieces = splitRespectingParentheses(sentence, 'conjunction')
+    .map((p) => p.replace(/^(?:e|ed|and)\s+/i, '').trim())
     .filter(Boolean);
   if (andPieces.length > 1) {
     const recognizedCount = andPieces.filter(isRecognizedActivityFragment).length;
-    if (
-      recognizedCount >= 2 ||
-      (recognizedCount >= 1 && andPieces.every((p) => p.split(/\s+/).length >= 2))
-    ) {
+    if (recognizedCount === andPieces.length) {
+      const resolvedNames = andPieces
+        .map((p) => lookupKnownPlace(p)?.canonicalName)
+        .filter(Boolean);
+      if (resolvedNames.length > 1 && new Set(resolvedNames).size === 1) {
+        return [sentence];
+      }
       return andPieces;
     }
   }
@@ -1291,6 +1595,19 @@ export function parseNaturalLanguageItinerary(
   for (const stay of stayRules) {
     const cityRaw = stay.mainBody.replace(/^[:\-–—\s]+/, '').trim();
     const cityInfo = lookupCityInfo(cityRaw);
+    const isMultiCityHeader =
+      stay.mainBody
+        .split(/\s*,\s*|\s+(?:e|ed|and|&)\s+/i)
+        .filter((w) => !!lookupCityInfo(w)).length >= 2;
+    const isEntireTripHeader =
+      stay.startIso === minIso &&
+      stay.endIso === maxIso &&
+      dayNodes.length >= 2 &&
+      (!cityInfo || isMultiCityHeader);
+    if (isEntireTripHeader) {
+      continue;
+    }
+
     const cleanCity = cityInfo?.canonical || smartTitleCase(cityRaw);
     const rangeIsos = enumerateIsoRange(stay.startIso, stay.endIso);
 
@@ -1356,22 +1673,55 @@ export function parseNaturalLanguageItinerary(
   }
 
   // Propagate baseCity for single-day legs that still lack baseCity
+  let lastKnownCity = '';
   for (const dn of dayNodes) {
     const iso = dn.spec.isRelativeDay
       ? addDaysIso(relativeBaseIso, dn.spec.startDay - 1)
       : resolveMonthDayToIso(dn.spec.startDay, dn.spec.startMonth, dn.spec.startYear);
     const bucket = dayMap.get(iso);
-    if (!bucket || bucket.baseCity) continue;
-    if (dn.dayTitle) {
-      const possibleCity = lookupCityInfo(dn.dayTitle);
-      if (possibleCity) bucket.baseCity = possibleCity.canonical;
+    if (!bucket) continue;
+
+    if (!bucket.baseCity) {
+      if (dn.dayTitle) {
+        const possibleCity = lookupCityInfo(dn.dayTitle);
+        if (possibleCity) bucket.baseCity = possibleCity.canonical;
+      }
+      if (!bucket.baseCity && bucket.activities.length > 0) {
+        for (const act of bucket.activities) {
+          const actCity = lookupCityInfo(act.locationName || '') || lookupCityInfo(act.title || '');
+          if (actCity) {
+            bucket.baseCity = actCity.canonical;
+            break;
+          }
+        }
+      }
+      if (!bucket.baseCity && lastKnownCity) {
+        bucket.baseCity = lastKnownCity;
+      }
+    }
+    if (bucket.baseCity) {
+      lastKnownCity = bucket.baseCity;
     }
   }
 
   // 3. Process Parenthetical Sub-Plans inside Multi-Day Stay Ranges!
   for (const stay of stayRules) {
     if (!stay.parenBody) continue;
-    const cityInfo = lookupCityInfo(stay.mainBody);
+    const cityRaw = stay.mainBody.replace(/^[:\-–—\s]+/, '').trim();
+    const cityInfo = lookupCityInfo(cityRaw);
+    const isMultiCityHeader =
+      stay.mainBody
+        .split(/\s*,\s*|\s+(?:e|ed|and|&)\s+/i)
+        .filter((w) => !!lookupCityInfo(w)).length >= 2;
+    const isEntireTripHeader =
+      stay.startIso === minIso &&
+      stay.endIso === maxIso &&
+      dayNodes.length >= 2 &&
+      (!cityInfo || isMultiCityHeader);
+    if (isEntireTripHeader) {
+      continue;
+    }
+
     const stayCity = cityInfo?.canonical || smartTitleCase(stay.mainBody);
 
     // Effective days belonging to this stay
@@ -1412,6 +1762,21 @@ export function parseNaturalLanguageItinerary(
         .split(',')
         .map((c) => c.trim())
         .filter(Boolean);
+
+      // If the parenthetical is a list of destination cities (e.g. "Mitteleuropa (Vienna, Praga, Budapest)" or "(Stoccolma e Copenaghen)")
+      // do not treat them as individual activity stops!
+      const candidatePlaces = strippedGroup
+        .split(/\s*,\s*|\s+(?:e|ed|and|&)\s+/i)
+        .map((c) => c.replace(/^(?:vedere|visitare|inserire)\s+/i, '').trim())
+        .filter(Boolean);
+
+      const isPureCityList =
+        candidatePlaces.length >= 2 &&
+        candidatePlaces.every((item) => !!lookupCityInfo(item));
+
+      if (isPureCityList) {
+        continue;
+      }
 
       for (const item of commaItems) {
         const cleanedItem = item.replace(/^(?:inserire|vedere|visitare)\s+/i, '').trim();

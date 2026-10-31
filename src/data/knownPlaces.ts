@@ -108,7 +108,7 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     defaultCategory: 'shopping'
   },
   {
-    keywords: ['tsukiji', 'mercato del pesce'],
+    keywords: ['tsukiji', 'mercato di tsukiji', 'mercato del pesce di tokyo', 'tsukiji fish market'],
     canonicalName: 'Mercato Esterno di Tsukiji (Mercato del Pesce)',
     locationName: 'Tsukiji Outer Market, Tokyo',
     lat: 35.6655,
@@ -437,6 +437,113 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lng: 135.429,
     defaultCategory: 'sightseeing'
   },
+  {
+    keywords: ['castello di matsumoto', 'matsumoto castle', 'corvo nero', 'castello corvo nero'],
+    canonicalName: 'Castello di Matsumoto (il Corvo Nero)',
+    locationName: 'Marunouchi 4-1, Matsumoto, Nagano',
+    lat: 36.2388,
+    lng: 137.9691,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['miyagawa', 'mercati mattutini di takayama', 'miyagawa morning market', 'sanmachi suji', 'sanmachi'],
+    canonicalName: 'Mercato Mattutino Miyagawa & Sanmachi Suji',
+    locationName: 'Shimosannomachi, Takayama, Gifu',
+    lat: 36.1439,
+    lng: 137.2588,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:00'
+  },
+  {
+    keywords: ['hida no sato', 'villaggio museo hida', 'hida folk village'],
+    canonicalName: 'Villaggio Museo Hida no Sato (Folk Village)',
+    locationName: 'Kamiokamotomachi 1-590, Takayama',
+    lat: 36.1328,
+    lng: 137.2346,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['takayama matsuri yatai kaikan', 'museo dei carri'],
+    canonicalName: 'Museo dei Carri Storici (Takayama Matsuri Yatai Kaikan)',
+    locationName: 'Sakuramachi 178, Takayama',
+    lat: 36.1478,
+    lng: 137.2608,
+    defaultCategory: 'sightseeing',
+    defaultTime: '15:30'
+  },
+  {
+    keywords: ['shirakawa-go', 'shirakawago', 'ogimachi', 'gassho-zukuri', 'case gassho-zukuri'],
+    canonicalName: 'Villaggio Gassho-zukuri di Ogimachi (Shirakawa-go)',
+    locationName: 'Ogimachi, Shirakawa-mura, Gifu',
+    lat: 36.2577,
+    lng: 136.9064,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:30'
+  },
+  {
+    keywords: ['shiroyama', 'belvedere di shiroyama', 'punto panoramico shiroyama'],
+    canonicalName: 'Belvedere Panoramico Shiroyama (Shirakawa-go)',
+    locationName: 'Ogimachi, Shirakawa-mura, Gifu',
+    lat: 36.2625,
+    lng: 136.9082,
+    defaultCategory: 'sightseeing',
+    defaultTime: '13:30'
+  },
+  {
+    keywords: ['kenroku-en', 'kenrokuen', 'giardino kenroku-en', 'seisonkaku', 'villa seisonkaku'],
+    canonicalName: 'Giardino Kenroku-en & Villa Seisonkaku',
+    locationName: 'Kenrokumachi 1, Kanazawa, Ishikawa',
+    lat: 36.5621,
+    lng: 136.6625,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:00'
+  },
+  {
+    keywords: ['nagamachi', 'casa nomura', 'quartiere dei samurai', 'quartiere dei samurai di nagamachi'],
+    canonicalName: 'Quartiere dei Samurai di Nagamachi (Residenza Nomura)',
+    locationName: 'Nagamachi, Kanazawa, Ishikawa',
+    lat: 36.5638,
+    lng: 136.6506,
+    defaultCategory: 'sightseeing',
+    defaultTime: '13:30'
+  },
+  {
+    keywords: ['higashi chaya', 'distretto delle geishe higashi chaya', 'higashi chaya district'],
+    canonicalName: 'Distretto delle Geishe Higashi Chaya (Tè Matcha & Foglia d’Oro)',
+    locationName: 'Higashiyama, Kanazawa, Ishikawa',
+    lat: 36.5724,
+    lng: 136.6668,
+    defaultCategory: 'sightseeing',
+    defaultTime: '15:30'
+  },
+  {
+    keywords: ['omicho', 'mercato omicho', 'omicho market'],
+    canonicalName: 'Mercato Storico Omicho (Sashimi & Street Food)',
+    locationName: 'Kamiomicho 50, Kanazawa',
+    lat: 36.5714,
+    lng: 136.6565,
+    defaultCategory: 'food',
+    defaultTime: '12:00'
+  },
+  {
+    keywords: ['museo xxi secolo', "museo d'arte contemporanea del xxi secolo", 'piscina di leandro erlich', '21st century museum'],
+    canonicalName: 'Museo d’Arte Contemporanea del XXI Secolo',
+    locationName: 'Hirosaka 1-2-1, Kanazawa',
+    lat: 36.5609,
+    lng: 136.6582,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['haneda', 'aeroporto di tokyo haneda', 'tokyo haneda'],
+    canonicalName: 'Aeroporto di Tokyo Haneda (HND)',
+    locationName: 'Ota City, Tokyo',
+    lat: 35.5494,
+    lng: 139.7798,
+    defaultCategory: 'transport'
+  },
 
   // =========================================================================
   // ITALIA: Roma, Firenze, Venezia, Toscana, Dolomiti, Milano
@@ -721,6 +828,147 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lng: 9.1919,
     defaultCategory: 'sightseeing'
   },
+  {
+    keywords: ['catania fontanarossa', 'aeroporto di catania', 'fontanarossa'],
+    canonicalName: 'Aeroporto di Catania Fontanarossa (CTA)',
+    locationName: 'Via Fontanarossa, Catania',
+    lat: 37.4668,
+    lng: 15.0664,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['piazza del duomo a catania', 'piazza del duomo di catania', 'duomo di catania', 'cattedrale di sant\'agata', 'cattedrale di sant agata'],
+    canonicalName: 'Piazza del Duomo & Cattedrale di Sant’Agata',
+    locationName: 'Piazza del Duomo, Catania',
+    lat: 37.5025,
+    lng: 15.0871,
+    defaultCategory: 'sightseeing'
+  },
+  {
+    keywords: ['savia', 'pasticceria savia', 'arancino da savia'],
+    canonicalName: 'Pasticceria Savia (Arancini & Pasticceria Catanese)',
+    locationName: 'Via Etnea 300, Catania',
+    lat: 37.5098,
+    lng: 15.0863,
+    defaultCategory: 'food',
+    defaultTime: '13:00',
+    notes: 'Arancini tradizionali e pasticceria tipica dal 1897.'
+  },
+  {
+    keywords: ['pescheria', 'pescheria di catania', 'mercato del pesce', 'mercato del pesce di catania'],
+    canonicalName: 'Storico Mercato del Pesce di Catania (Pescheria)',
+    locationName: 'Piazza Alonzo di Benedetto, Catania',
+    lat: 37.5019,
+    lng: 15.0863,
+    defaultCategory: 'food',
+    defaultTime: '11:00',
+    notes: 'Folcloristico mercato storico del pesce sotto le mura cinquecentesche.'
+  },
+  {
+    keywords: ['etna', 'crateri silvestri', 'rifugio sapienza', 'monte etna'],
+    canonicalName: 'Parco dell’Etna & Crateri Silvestri',
+    locationName: 'Piazzale Rifugio Sapienza, Nicolosi (CT)',
+    lat: 37.7003,
+    lng: 15.0006,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:00',
+    notes: 'Escursione tra i paesaggi vulcanici e sentieri panoramici.'
+  },
+  {
+    keywords: ['teatro antico', 'teatro greco di taormina', 'teatro antico di taormina', 'teatro di taormina'],
+    canonicalName: 'Teatro Antico di Taormina',
+    locationName: 'Via del Teatro Greco 1, Taormina',
+    lat: 37.8524,
+    lng: 15.2922,
+    defaultCategory: 'sightseeing',
+    defaultTime: '16:00',
+    notes: 'Straordinario teatro greco-romano affacciato sulla baia di Naxos e sull’Etna.'
+  },
+  {
+    keywords: ['ortigia', 'isola di ortigia', 'visita di ortigia'],
+    canonicalName: 'Isola di Ortigia (Centro Storico di Siracusa)',
+    locationName: 'Ortigia, Siracusa',
+    lat: 37.0601,
+    lng: 15.2936,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00',
+    notes: 'Vicoli barocchi sul mare, Fonte Aretusa e Piazza Duomo.'
+  },
+  {
+    keywords: ['duomo di siracusa', 'piazza duomo di siracusa'],
+    canonicalName: 'Duomo di Siracusa (Tempio di Atena)',
+    locationName: 'Piazza Duomo, Ortigia, Siracusa',
+    lat: 37.0596,
+    lng: 15.2933,
+    defaultCategory: 'sightseeing',
+    defaultTime: '12:00'
+  },
+  {
+    keywords: ['palazzo nicolaci'],
+    canonicalName: 'Palazzo Nicolaci di Villadorata',
+    locationName: 'Via Corrado Nicolaci, Noto',
+    lat: 36.8926,
+    lng: 15.0706,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:30'
+  },
+  {
+    keywords: ['cattedrale di san nicolo', 'cattedrale di noto', 'duomo di noto'],
+    canonicalName: 'Cattedrale di San Nicolò a Noto',
+    locationName: 'Piazza Municipio, Noto',
+    lat: 36.8916,
+    lng: 15.0704,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:30'
+  },
+  {
+    keywords: ['spiaggia di calamosche', 'calamosche'],
+    canonicalName: 'Spiaggia di Calamosche (Oasi di Vendicari)',
+    locationName: 'Riserva Naturale Vendicari, Noto',
+    lat: 36.8242,
+    lng: 15.0931,
+    defaultCategory: 'relax',
+    defaultTime: '15:00'
+  },
+  {
+    keywords: ['ragusa ibla', 'borgo di ragusa ibla'],
+    canonicalName: 'Ragusa Ibla (Borgo Barocco)',
+    locationName: 'Ragusa Ibla, Ragusa',
+    lat: 36.9269,
+    lng: 14.7306,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:30'
+  },
+  {
+    keywords: ['modica', 'cioccolato di modica', 'cioccolato artigianale'],
+    canonicalName: 'Modica & Tradizione del Cioccolato',
+    locationName: 'Corso Umberto I, Modica',
+    lat: 36.8588,
+    lng: 14.7629,
+    defaultCategory: 'food',
+    defaultTime: '16:00',
+    notes: 'Degustazione del celebre cioccolato lavorato a freddo di origine azteca.'
+  },
+  {
+    keywords: ['valle dei templi', 'valle dei templi ad agrigento', 'valle dei templi di agrigento'],
+    canonicalName: 'Parco Archeologico della Valle dei Templi',
+    locationName: 'Valle dei Templi, Agrigento',
+    lat: 37.2903,
+    lng: 13.5857,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:00',
+    notes: 'Area archeologica ellenica patrimonio mondiale UNESCO.'
+  },
+  {
+    keywords: ['tempio della concordia'],
+    canonicalName: 'Tempio della Concordia',
+    locationName: 'Valle dei Templi, Agrigento',
+    lat: 37.2897,
+    lng: 13.5925,
+    defaultCategory: 'sightseeing',
+    defaultTime: '17:30',
+    notes: 'Uno dei templi dorici meglio conservati al mondo, suggestivo al tramonto.'
+  },
 
   // =========================================================================
   // ISLANDA
@@ -938,19 +1186,82 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     defaultCategory: 'sightseeing'
   },
   {
-    keywords: ['las vegas', 'bellagio', 'strip'],
+    keywords: ['harry reid', 'aeroporto di las vegas', 'las vegas harry reid'],
+    canonicalName: 'Aeroporto di Las Vegas Harry Reid (LAS)',
+    locationName: '5757 Wayne Newton Blvd, Las Vegas, NV',
+    lat: 36.084,
+    lng: -115.1537,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['zion', 'the narrows', 'angels landing', 'parco nazionale di zion'],
+    canonicalName: 'Parco Nazionale di Zion (The Narrows & Angels Landing)',
+    locationName: 'Springdale, Utah',
+    lat: 37.2982,
+    lng: -113.0263,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:00'
+  },
+  {
+    keywords: ['bryce canyon', 'bryce', 'hoodoos', 'sunset point', 'sunrise point'],
+    canonicalName: 'Parco Nazionale del Bryce Canyon (Sunrise & Sunset Point)',
+    locationName: 'Bryce Canyon, Utah',
+    lat: 37.6225,
+    lng: -112.1661,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:00'
+  },
+  {
+    keywords: ['horseshoe bend'],
+    canonicalName: 'Horseshoe Bend (Affaccio sul Fiume Colorado)',
+    locationName: 'Mile Marker 545, Hwy 89, Page, AZ',
+    lat: 36.879,
+    lng: -111.5104,
+    defaultCategory: 'sightseeing',
+    defaultTime: '15:30'
+  },
+  {
+    keywords: ['antelope canyon', 'antelope canyon lower', 'antelope canyon upper'],
+    canonicalName: 'Antelope Canyon Lower (Gole di Roccia Rossa)',
+    locationName: 'Indn Route 222, Page, AZ',
+    lat: 36.8619,
+    lng: -111.3743,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:30'
+  },
+  {
+    keywords: ['monument valley', 'the view', 'monoliti navajo'],
+    canonicalName: 'Monument Valley Navajo Tribal Park & The View',
+    locationName: 'Monument Valley, Utah/Arizona',
+    lat: 36.9832,
+    lng: -110.1118,
+    defaultCategory: 'sightseeing',
+    defaultTime: '16:00'
+  },
+  {
+    keywords: ['grand canyon', 'grand canyon south rim', 'mather point', 'rim trail', 'elicottero sul grand canyon'],
+    canonicalName: 'Parco Nazionale del Grand Canyon (South Rim & Mather Point)',
+    locationName: 'Grand Canyon Village, Arizona',
+    lat: 36.0544,
+    lng: -112.1401,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:00'
+  },
+  {
+    keywords: ['route 66', 'seligman'],
+    canonicalName: 'Storica Route 66 & Seligman',
+    locationName: 'Seligman, Arizona',
+    lat: 35.3256,
+    lng: -112.8763,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:00'
+  },
+  {
+    keywords: ['las vegas strip', 'bellagio', 'strip di las vegas', 'strip'],
     canonicalName: 'Las Vegas Strip & Fontane del Bellagio',
     locationName: 'Las Vegas Boulevard, Nevada',
     lat: 36.1126,
     lng: -115.1767,
-    defaultCategory: 'sightseeing'
-  },
-  {
-    keywords: ['grand canyon', 'grand canyon south rim'],
-    canonicalName: 'Parco Nazionale del Grand Canyon (South Rim)',
-    locationName: 'Grand Canyon Village, Arizona',
-    lat: 36.0544,
-    lng: -112.1401,
     defaultCategory: 'sightseeing'
   },
   {
@@ -1355,6 +1666,175 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
   },
 
   // =========================================================================
+  // MITTELEUROPA: VIENNA, PRAGA, BUDAPEST
+  // =========================================================================
+  {
+    keywords: ['vienna schwechat', 'aeroporto di vienna', 'schwechat'],
+    canonicalName: 'Aeroporto di Vienna-Schwechat (VIE)',
+    locationName: 'Flughafen Wien-Schwechat, Vienna',
+    lat: 48.1103,
+    lng: 16.5697,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['duomo di santo stefano', 'stephansdom', 'santo stefano a vienna'],
+    canonicalName: 'Duomo di Santo Stefano (Stephansdom)',
+    locationName: 'Stephansplatz, Vienna',
+    lat: 48.2085,
+    lng: 16.3738,
+    defaultCategory: 'sightseeing'
+  },
+  {
+    keywords: ['demel', 'pasticceria demel', 'sacher torte', 'hotel sacher'],
+    canonicalName: 'Pasticceria Demel & Tradizione Sacher',
+    locationName: 'Kohlmarkt 14, Vienna',
+    lat: 48.2086,
+    lng: 16.3672,
+    defaultCategory: 'food',
+    defaultTime: '16:00'
+  },
+  {
+    keywords: ['schonbrunn', 'schönbrunn', 'castello di schonbrunn', 'castello di schönbrunn', 'giardini di schonbrunn', 'giardini di schönbrunn'],
+    canonicalName: 'Castello e Giardini di Schönbrunn',
+    locationName: 'Schönbrunner Schloßstraße 47, Vienna',
+    lat: 48.1848,
+    lng: 16.3122,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:30'
+  },
+  {
+    keywords: ['belvedere', 'palazzo del belvedere', 'museo di klimt', 'klimt al belvedere'],
+    canonicalName: 'Palazzo del Belvedere & Museo di Klimt',
+    locationName: 'Prinz-Eugen-Straße 27, Vienna',
+    lat: 48.1915,
+    lng: 16.3809,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['wien hauptbahnhof', 'wien hbf', 'stazione centrale di vienna'],
+    canonicalName: 'Stazione Vienna Centrale (Wien Hauptbahnhof)',
+    locationName: 'Am Hauptbahnhof 1, Vienna',
+    lat: 48.1853,
+    lng: 16.3764,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['praha hlavni nadrazi', 'praha hlavní nádraží', 'praha hl.n.', 'praha hl n', 'stazione centrale di praga'],
+    canonicalName: 'Stazione Praga Centrale (Praha hl.n.)',
+    locationName: 'Wilsonova 8, Praga',
+    lat: 50.0831,
+    lng: 14.4353,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['piazza della citta vecchia', 'orologio astronomico', 'staromestske namesti', 'orologio astronomico di praga'],
+    canonicalName: 'Piazza Città Vecchia & Orologio Astronomico',
+    locationName: 'Staroměstské náměstí, Praga',
+    lat: 50.0875,
+    lng: 14.4213,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:00'
+  },
+  {
+    keywords: ['ponte carlo', 'karluv most', 'tramonto su ponte carlo'],
+    canonicalName: 'Ponte Carlo (Karlův most)',
+    locationName: 'Karlův most, Praga',
+    lat: 50.0865,
+    lng: 14.4114,
+    defaultCategory: 'sightseeing',
+    defaultTime: '18:00'
+  },
+  {
+    keywords: ['castello di praga', 'prazsky hrad', 'pražský hrad', 'cattedrale di san vito', 'vicolo d oro', "vicolo d'oro"],
+    canonicalName: 'Castello di Praga & Cattedrale di San Vito',
+    locationName: 'Hradčany, Praga',
+    lat: 50.091,
+    lng: 14.4016,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:30'
+  },
+  {
+    keywords: ['josefov', 'quartiere ebraico di praga', 'sinagoghe storiche'],
+    canonicalName: 'Quartiere Ebraico di Josefov',
+    locationName: 'Josefov, Praga',
+    lat: 50.0898,
+    lng: 14.4187,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['budapest nyugati', 'stazione budapest nyugati', 'nyugati palyaudvar'],
+    canonicalName: 'Stazione Budapest Nyugati',
+    locationName: 'Teréz krt. 55, Budapest',
+    lat: 47.5108,
+    lng: 19.0573,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['terme szechenyi', 'terme széchenyi', 'szechenyi baths', 'bagno termale'],
+    canonicalName: 'Terme Széchenyi (Bagno Termale)',
+    locationName: 'Állatkerti krt. 9-11, Budapest',
+    lat: 47.5188,
+    lng: 19.0824,
+    defaultCategory: 'relax',
+    defaultTime: '16:00'
+  },
+  {
+    keywords: ['bastione dei pescatori', 'halaszbastya'],
+    canonicalName: 'Bastione dei Pescatori (Halászbástya)',
+    locationName: 'Szentháromság tér, Budapest',
+    lat: 47.5022,
+    lng: 19.0348,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:30'
+  },
+  {
+    keywords: ['chiesa di mattia', 'matyas templom'],
+    canonicalName: 'Chiesa di Mattia sulla Collina di Buda',
+    locationName: 'Szentháromság tér 2, Budapest',
+    lat: 47.5019,
+    lng: 19.0342,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['parlamento di budapest', 'orszaghaz', 'palazzo del parlamento a budapest'],
+    canonicalName: 'Parlamento di Budapest lungo il Danubio',
+    locationName: 'Kossuth Lajos tér 1-3, Budapest',
+    lat: 47.5072,
+    lng: 19.0456,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['crociera sul danubio', 'crociera serale sul danubio', 'danubio'],
+    canonicalName: 'Crociera Panoramica sul Danubio',
+    locationName: 'Danubio, Budapest',
+    lat: 47.498,
+    lng: 19.045,
+    defaultCategory: 'sightseeing',
+    defaultTime: '20:00'
+  },
+  {
+    keywords: ['mercato centrale di budapest', 'nagyvasarcsarnok', 'nagyvásárcsarnok'],
+    canonicalName: 'Mercato Centrale di Budapest (Nagyvásárcsarnok)',
+    locationName: 'Vámház krt. 1-3, Budapest',
+    lat: 47.4871,
+    lng: 19.0585,
+    defaultCategory: 'food',
+    defaultTime: '10:30'
+  },
+  {
+    keywords: ['budapest liszt ferenc', 'aeroporto di budapest', 'liszt ferenc'],
+    canonicalName: 'Aeroporto di Budapest Liszt Ferenc (BUD)',
+    locationName: 'Budapest Liszt Ferenc International Airport',
+    lat: 47.4369,
+    lng: 19.2556,
+    defaultCategory: 'transport'
+  },
+
+  // =========================================================================
   // PERÙ: Cusco & Machu Picchu
   // =========================================================================
   {
@@ -1622,7 +2102,7 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     defaultCategory: 'sightseeing'
   },
   {
-    keywords: ['noleggio bici', 'bici ad amsterdam', 'bike rental'],
+    keywords: ['noleggio bici ad amsterdam', 'bici ad amsterdam', 'bike rental amsterdam'],
     canonicalName: 'Noleggio Biciclette & Giro in Città',
     locationName: 'Centraal Station, Amsterdam',
     lat: 52.378,
@@ -1664,5 +2144,380 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lat: 31.5894,
     lng: -5.9922,
     defaultCategory: 'sightseeing'
+  },
+
+  // =========================================================================
+  // SCANDINAVIA (STOCCOLMA & COPENAGHEN)
+  // =========================================================================
+  {
+    keywords: ['gamla stan', 'citta vecchia di stoccolma', 'città vecchia di stoccolma', 'stortorget'],
+    canonicalName: 'Gamla Stan (Città Vecchia di Stoccolma)',
+    locationName: 'Gamla Stan, Stoccolma, Svezia',
+    lat: 59.3257,
+    lng: 18.0711,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:30'
+  },
+  {
+    keywords: ['palazzo reale di stoccolma', 'kungliga slottet', 'palazzo reale stoccolma'],
+    canonicalName: 'Palazzo Reale di Stoccolma (Kungliga Slottet)',
+    locationName: 'Gamla Stan, Stoccolma, Svezia',
+    lat: 59.3268,
+    lng: 18.0717,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['cafe chokladkoppen', 'café chokladkoppen', 'chokladkoppen'],
+    canonicalName: 'Café Chokladkoppen (Pausa Fika & Kanelbulle)',
+    locationName: 'Stortorget 18, Gamla Stan, Stoccolma',
+    lat: 59.3252,
+    lng: 18.0706,
+    defaultCategory: 'food',
+    defaultTime: '12:00'
+  },
+  {
+    keywords: ['museo vasa', 'vasamuseet', 'vasa museum', 'galeone seicentesco', 'galeone vasa'],
+    canonicalName: 'Museo Vasa (Vasamuseet)',
+    locationName: 'Galärvarvsvägen 14, Djurgården, Stoccolma',
+    lat: 59.328,
+    lng: 18.0914,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['arlanda express', 'stoccolma arlanda', 'aeroporto arlanda', 'arlanda'],
+    canonicalName: 'Aeroporto di Stoccolma Arlanda (ARN)',
+    locationName: 'Arlanda, Sigtuna, Svezia',
+    lat: 59.6498,
+    lng: 17.9238,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['stoccolma centralen', 'stockholm centralen', 'stazione centrale di stoccolma'],
+    canonicalName: 'Stazione Centrale di Stoccolma (Stockholm Centralen)',
+    locationName: 'Centralplan 15, Norrmalm, Stoccolma',
+    lat: 59.3308,
+    lng: 18.0583,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['ponte di oresund', 'ponte di øresund', 'oresundsbron', 'øresundsbron'],
+    canonicalName: 'Ponte di Øresund (Øresundsbron)',
+    locationName: 'Ponte di Øresund, Danimarca / Svezia',
+    lat: 55.5781,
+    lng: 12.8315,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['copenaghen stazione centrale', 'kobenhavn h', 'københavn h', 'stazione centrale di copenaghen'],
+    canonicalName: 'Stazione Centrale di Copenaghen (København H)',
+    locationName: 'Bernstorffsgade 16, Copenaghen',
+    lat: 55.6728,
+    lng: 12.5647,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['nyhavn', 'casette colorate di nyhavn', 'porto nuovo di copenaghen'],
+    canonicalName: 'Nyhavn (Porto Nuovo)',
+    locationName: 'Nyhavn, Copenaghen, Danimarca',
+    lat: 55.6795,
+    lng: 12.591,
+    defaultCategory: 'sightseeing',
+    defaultTime: '15:00'
+  },
+  {
+    keywords: ['sirenetta', 'statua della sirenetta', 'den lille havfrue'],
+    canonicalName: 'Statua della Sirenetta (Den Lille Havfrue)',
+    locationName: 'Langelinie, Copenaghen, Danimarca',
+    lat: 55.6929,
+    lng: 12.5993,
+    defaultCategory: 'sightseeing',
+    defaultTime: '16:30'
+  },
+  {
+    keywords: ['palazzo di amalienborg', 'amalienborg', 'cambio della guardia ad amalienborg'],
+    canonicalName: 'Palazzo di Amalienborg & Cambio della Guardia',
+    locationName: 'Amalienborg Slotsplads, Copenaghen',
+    lat: 55.6841,
+    lng: 12.5932,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:45'
+  },
+  {
+    keywords: ['christianshavn', 'quartiere di christianshavn', 'canali di christianshavn'],
+    canonicalName: 'Quartiere di Christianshavn & Canali',
+    locationName: 'Christianshavn, Copenaghen, Danimarca',
+    lat: 55.6726,
+    lng: 12.5932,
+    defaultCategory: 'sightseeing',
+    defaultTime: '13:30'
+  },
+  {
+    keywords: ['giardini di tivoli', 'tivoli gardens', 'parco tivoli', 'parco divertimenti giardini di tivoli', 'tivoli'],
+    canonicalName: 'Giardini di Tivoli (Tivoli Gardens)',
+    locationName: 'Vesterbrogade 3, Copenaghen, Danimarca',
+    lat: 55.6737,
+    lng: 12.5683,
+    defaultCategory: 'sightseeing',
+    defaultTime: '15:30'
+  },
+  {
+    keywords: ['castello di rosenborg', 'rosenborg slot', 'gioielli della corona', 'rosenborg'],
+    canonicalName: 'Castello di Rosenborg & Gioielli della Corona',
+    locationName: 'Øster Voldgade 4A, Copenaghen, Danimarca',
+    lat: 55.6858,
+    lng: 12.5773,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:00'
+  },
+  {
+    keywords: ['copenaghen kastrup', 'aeroporto di copenaghen kastrup', 'aeroporto kastrup', 'kastrup', 'aeroporto cph'],
+    canonicalName: 'Aeroporto di Copenaghen Kastrup (CPH)',
+    locationName: 'Lufthavnsboulevarden 6, Kastrup, Danimarca',
+    lat: 55.618,
+    lng: 12.6508,
+    defaultCategory: 'transport'
+  },
+
+  // =========================================================================
+  // INDONESIA & BALI
+  // =========================================================================
+  {
+    keywords: ['ngurah rai', 'aeroporto di denpasar', 'denpasar dps', 'aeroporto denpasar'],
+    canonicalName: 'Aeroporto Internazionale Ngurah Rai (DPS)',
+    locationName: 'Tuban, Kuta, Bali',
+    lat: -8.7482,
+    lng: 115.1672,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['mercato tradizionale di ubud', 'mercato di ubud', 'ubud market'],
+    canonicalName: 'Mercato Tradizionale di Ubud (Pasar Seni Ubud)',
+    locationName: 'Jl. Raya Ubud, Ubud, Gianyar, Bali',
+    lat: -8.5069,
+    lng: 115.2625,
+    defaultCategory: 'shopping',
+    defaultTime: '18:00'
+  },
+  {
+    keywords: ['monte batur', 'batur', 'trekking all\'alba sul monte batur', 'gunung batur'],
+    canonicalName: 'Trekking all’Alba sul Monte Batur & Caldera',
+    locationName: 'Kintamani, Bangli Regency, Bali',
+    lat: -8.2421,
+    lng: 115.3753,
+    defaultCategory: 'sightseeing',
+    defaultTime: '04:00'
+  },
+  {
+    keywords: ['foresta delle scimmie', 'monkey forest', 'sacred monkey forest', 'foresta delle scimmie sacre di ubud'],
+    canonicalName: 'Foresta delle Scimmie Sacre di Ubud (Mandala Suci Wenara Wana)',
+    locationName: 'Jl. Monkey Forest, Ubud, Gianyar, Bali',
+    lat: -8.5194,
+    lng: 115.2606,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
+  },
+  {
+    keywords: ['tegallalang', 'risaie di tegallalang', 'risaie a terrazza di tegallalang', 'terrazze di riso di tegallalang'],
+    canonicalName: 'Risaie a Terrazza di Tegallalang & Altalena Panoramica',
+    locationName: 'Jl. Raya Tegallalang, Gianyar, Bali',
+    lat: -8.4347,
+    lng: 115.2789,
+    defaultCategory: 'sightseeing',
+    defaultTime: '09:30'
+  },
+  {
+    keywords: ['tanah lot', 'tempio di tanah lot', 'pura tanah lot'],
+    canonicalName: 'Tempio di Tanah Lot al Tramonto',
+    locationName: 'Beraban, Kediri, Tabanan, Bali',
+    lat: -8.6212,
+    lng: 115.0868,
+    defaultCategory: 'sightseeing',
+    defaultTime: '17:30'
+  },
+  {
+    keywords: ['sanur', 'porto di sanur', 'motoscafo da sanur'],
+    canonicalName: 'Porto di Sanur (Imbarco Veloce)',
+    locationName: 'Sanur Kaja, Denpasar Selatan, Bali',
+    lat: -8.6738,
+    lng: 115.2627,
+    defaultCategory: 'transport',
+    defaultTime: '08:00'
+  },
+  {
+    keywords: ['nusa penida', 'porto di nusa penida', 'toyapakeh', 'banjar nyuh'],
+    canonicalName: 'Isola di Nusa Penida (Porto di Arrivo)',
+    locationName: 'Nusa Penida, Klungkung Regency, Bali',
+    lat: -8.7278,
+    lng: 115.5444,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['kelingking beach', 'kelingking', 'crystal bay', 'spiaggia di kelingking'],
+    canonicalName: 'Nusa Penida: Kelingking Beach & Crystal Bay',
+    locationName: 'Nusa Penida, Klungkung Regency, Bali',
+    lat: -8.7508,
+    lng: 115.4744,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:30'
+  },
+  {
+    keywords: ['seminyak', 'massaggio balinese a seminyak', 'relax a seminyak'],
+    canonicalName: 'Seminyak & Massaggio Tradizionale Balinese',
+    locationName: 'Seminyak, Kuta, Badung, Bali',
+    lat: -8.6913,
+    lng: 115.1682,
+    defaultCategory: 'relax',
+    defaultTime: '10:00'
+  },
+
+  // =========================================================================
+  // TOSCANA: Lucca, Pisa, Volterra
+  // =========================================================================
+  {
+    keywords: ['mura di lucca', 'passeggiata sulle mura di lucca', 'mura cinquecentesche'],
+    canonicalName: 'Passeggiata sulle Mura Cinquecentesche di Lucca',
+    locationName: 'Passeggiata delle Mura Urbane, Lucca',
+    lat: 43.8429,
+    lng: 10.5027,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['osteria baralla', 'baralla'],
+    canonicalName: 'Osteria Baralla (Tortelli Lucchesi Tradizionali)',
+    locationName: 'Via Anfiteatro 5/9, Lucca',
+    lat: 43.8458,
+    lng: 10.5057,
+    defaultCategory: 'food',
+    defaultTime: '13:00'
+  },
+  {
+    keywords: ['torre di pisa', 'torre pendente', 'torre pendente di pisa', 'piazza dei miracoli'],
+    canonicalName: 'Torre Pendente di Pisa & Piazza dei Miracoli',
+    locationName: 'Piazza del Duomo, Pisa',
+    lat: 43.7228,
+    lng: 10.3966,
+    defaultCategory: 'sightseeing',
+    defaultTime: '17:30'
+  },
+  {
+    keywords: ['museo etrusco guarnacci', 'guarnacci', 'museo guarnacci'],
+    canonicalName: 'Museo Etrusco Guarnacci',
+    locationName: 'Via Don Giovanni Minzoni 15, Volterra',
+    lat: 43.4022,
+    lng: 10.8624,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['gelateria dondoli', 'dondoli'],
+    canonicalName: 'Gelateria Dondoli (Gelato Campione del Mondo)',
+    locationName: 'Piazza della Cisterna 4, San Gimignano',
+    lat: 43.4674,
+    lng: 11.0433,
+    defaultCategory: 'food',
+    defaultTime: '16:00'
+  },
+
+  // =========================================================================
+  // AUSTRALIA (SYDNEY, MELBOURNE, GREAT OCEAN ROAD)
+  // =========================================================================
+  {
+    keywords: ['circular quay', 'porto di sydney'],
+    canonicalName: 'Circular Quay & Sydney Cove',
+    locationName: 'Circular Quay, Sydney NSW',
+    lat: -33.8614,
+    lng: 151.2108,
+    defaultCategory: 'sightseeing'
+  },
+  {
+    keywords: ['royal botanic garden', 'royal botanic garden sydney'],
+    canonicalName: 'Royal Botanic Garden Sydney',
+    locationName: 'Mrs Macquaries Rd, Sydney NSW',
+    lat: -33.8642,
+    lng: 151.2166,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['blue mountains', 'three sisters', 'scenic world'],
+    canonicalName: 'Blue Mountains: Three Sisters & Scenic World',
+    locationName: 'Echo Point Rd, Katoomba NSW',
+    lat: -33.7321,
+    lng: 150.3121,
+    defaultCategory: 'sightseeing',
+    defaultTime: '10:00'
+  },
+  {
+    keywords: ['the rocks', 'quartiere the rocks'],
+    canonicalName: 'Quartiere Storico The Rocks',
+    locationName: 'The Rocks, Sydney NSW',
+    lat: -33.8587,
+    lng: 151.2088,
+    defaultCategory: 'sightseeing',
+    defaultTime: '19:30'
+  },
+  {
+    keywords: ['mrs macquarie\'s chair', 'mrs macquaries chair', 'fuochi di capodanno'],
+    canonicalName: 'Mrs Macquarie’s Chair (Punto Panoramico Baia di Sydney)',
+    locationName: '1D Mrs Macquaries Rd, Sydney NSW',
+    lat: -33.8598,
+    lng: 151.2223,
+    defaultCategory: 'sightseeing',
+    defaultTime: '16:00'
+  },
+  {
+    keywords: ['sydney kingsford smith', 'aeroporto di sydney', 'aeroporto sydney', 'syd'],
+    canonicalName: 'Aeroporto Internazionale di Sydney Kingsford Smith (SYD)',
+    locationName: 'Mascot, Sydney NSW',
+    lat: -33.9399,
+    lng: 151.1753,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['melbourne tullamarine', 'aeroporto di melbourne', 'aeroporto melbourne', 'mel'],
+    canonicalName: 'Aeroporto di Melbourne Tullamarine (MEL)',
+    locationName: 'Departure Dr, Melbourne Airport VIC',
+    lat: -37.669,
+    lng: 144.841,
+    defaultCategory: 'transport'
+  },
+  {
+    keywords: ['hosier lane', 'street art di melbourne', 'laneway di melbourne'],
+    canonicalName: 'Hosier Lane (Street Art & Laneways di Melbourne)',
+    locationName: 'Hosier Ln, Melbourne VIC',
+    lat: -37.8164,
+    lng: 144.9691,
+    defaultCategory: 'sightseeing',
+    defaultTime: '18:00'
+  },
+  {
+    keywords: ['great ocean road', 'twelve apostles', '12 apostles', 'loch ard gorge'],
+    canonicalName: 'Great Ocean Road: Twelve Apostles & Loch Ard Gorge',
+    locationName: 'Great Ocean Rd, Princetown VIC',
+    lat: -38.6629,
+    lng: 143.1051,
+    defaultCategory: 'sightseeing',
+    defaultTime: '11:00'
+  },
+  {
+    keywords: ['queen victoria market', 'mercato queen victoria'],
+    canonicalName: 'Queen Victoria Market',
+    locationName: 'Queen St, Melbourne VIC',
+    lat: -37.8076,
+    lng: 144.9568,
+    defaultCategory: 'shopping',
+    defaultTime: '11:30'
+  },
+  {
+    keywords: ['national gallery of victoria', 'ngv melbourne'],
+    canonicalName: 'National Gallery of Victoria (NGV)',
+    locationName: '180 St Kilda Rd, Melbourne VIC',
+    lat: -37.8226,
+    lng: 144.9689,
+    defaultCategory: 'sightseeing',
+    defaultTime: '14:30'
   }
 ];

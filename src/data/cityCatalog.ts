@@ -103,6 +103,56 @@ export const CITY_CATALOG: Record<string, CityInfo> = {
     lat: 34.6937,
     lng: 135.5023
   },
+  matsumoto: {
+    canonical: 'Matsumoto',
+    countryPresetId: 'japan',
+    countryName: 'Giappone',
+    emoji: '🇯🇵',
+    currency: 'JPY',
+    rateFromEur: 162.5,
+    lat: 36.2388,
+    lng: 137.9691
+  },
+  takayama: {
+    canonical: 'Takayama',
+    countryPresetId: 'japan',
+    countryName: 'Giappone',
+    emoji: '🇯🇵',
+    currency: 'JPY',
+    rateFromEur: 162.5,
+    lat: 36.1458,
+    lng: 137.2533
+  },
+  'shirakawa-go': {
+    canonical: 'Shirakawa-go',
+    countryPresetId: 'japan',
+    countryName: 'Giappone',
+    emoji: '🇯🇵',
+    currency: 'JPY',
+    rateFromEur: 162.5,
+    lat: 36.2577,
+    lng: 136.9064
+  },
+  kanazawa: {
+    canonical: 'Kanazawa',
+    countryPresetId: 'japan',
+    countryName: 'Giappone',
+    emoji: '🇯🇵',
+    currency: 'JPY',
+    rateFromEur: 162.5,
+    lat: 36.5613,
+    lng: 136.6562
+  },
+  nagano: {
+    canonical: 'Nagano',
+    countryPresetId: 'japan',
+    countryName: 'Giappone',
+    emoji: '🇯🇵',
+    currency: 'JPY',
+    rateFromEur: 162.5,
+    lat: 36.6486,
+    lng: 138.1948
+  },
   giappone: {
     canonical: 'Giappone',
     countryPresetId: 'japan',
@@ -203,6 +253,46 @@ export const CITY_CATALOG: Record<string, CityInfo> = {
     lat: 43.3188,
     lng: 11.3308
   },
+  lucca: {
+    canonical: 'Lucca',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 43.8429,
+    lng: 10.5027
+  },
+  pisa: {
+    canonical: 'Pisa',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 43.7228,
+    lng: 10.4017
+  },
+  volterra: {
+    canonical: 'Volterra',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 43.4025,
+    lng: 10.8606
+  },
+  'san gimignano': {
+    canonical: 'San Gimignano',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 43.4677,
+    lng: 11.0436
+  },
   toscana: {
     canonical: 'Toscana',
     countryPresetId: 'europe',
@@ -262,6 +352,128 @@ export const CITY_CATALOG: Record<string, CityInfo> = {
     rateFromEur: 1,
     lat: 46.5405,
     lng: 12.1357
+  },
+  catania: {
+    canonical: 'Catania',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 37.5079,
+    lng: 15.0873,
+    freeDaySuggestions: [
+      {
+        time: '09:30',
+        title: 'Piazza del Duomo & Cattedrale di Sant’Agata',
+        locationName: 'Piazza del Duomo, Catania',
+        lat: 37.5025,
+        lng: 15.0871,
+        category: 'sightseeing',
+        notes: 'Fontana dell’Elefante e barocco catanese.'
+      },
+      {
+        time: '13:00',
+        title: 'Pranzo e street food alla Pescheria di Catania',
+        locationName: 'Pescheria di Catania',
+        lat: 37.5019,
+        lng: 15.0863,
+        category: 'food',
+        notes: 'Storico mercato del pesce con degustazione di pesce fresco.'
+      }
+    ]
+  },
+  siracusa: {
+    canonical: 'Siracusa',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 37.0755,
+    lng: 15.2866,
+    freeDaySuggestions: [
+      {
+        time: '10:00',
+        title: 'Isola di Ortigia e Duomo di Siracusa',
+        locationName: 'Piazza Duomo, Ortigia, Siracusa',
+        lat: 37.0596,
+        lng: 15.2933,
+        category: 'sightseeing',
+        notes: 'Piazza Duomo, Fonte Aretusa e vicoli storici.'
+      }
+    ]
+  },
+  taormina: {
+    canonical: 'Taormina',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 37.8516,
+    lng: 15.2853,
+    freeDaySuggestions: [
+      {
+        time: '10:00',
+        title: 'Teatro Antico di Taormina',
+        locationName: 'Via del Teatro Greco, Taormina',
+        lat: 37.8524,
+        lng: 15.2922,
+        category: 'sightseeing',
+        notes: 'Teatro greco-romano con panorama sull’Etna e sul Mar Ionio.'
+      }
+    ]
+  },
+  noto: {
+    canonical: 'Noto',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 36.8916,
+    lng: 15.0704
+  },
+  ragusa: {
+    canonical: 'Ragusa',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 36.9269,
+    lng: 14.7306
+  },
+  agrigento: {
+    canonical: 'Agrigento',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 37.3111,
+    lng: 13.5765
+  },
+  palermo: {
+    canonical: 'Palermo',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 38.1157,
+    lng: 13.3615
+  },
+  sicilia: {
+    canonical: 'Sicilia',
+    countryPresetId: 'europe',
+    countryName: 'Italia',
+    emoji: '🇮🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 37.5999,
+    lng: 14.0154
   },
   italia: {
     canonical: 'Italia',
@@ -380,6 +592,66 @@ export const CITY_CATALOG: Record<string, CityInfo> = {
     rateFromEur: 1.08,
     lat: 37.8651,
     lng: -119.5383
+  },
+  zion: {
+    canonical: 'Zion',
+    countryPresetId: 'usa',
+    countryName: 'Stati Uniti',
+    emoji: '🇺🇸',
+    currency: 'USD',
+    rateFromEur: 1.08,
+    lat: 37.2982,
+    lng: -113.0263
+  },
+  springdale: {
+    canonical: 'Springdale',
+    countryPresetId: 'usa',
+    countryName: 'Stati Uniti',
+    emoji: '🇺🇸',
+    currency: 'USD',
+    rateFromEur: 1.08,
+    lat: 37.1889,
+    lng: -112.9986
+  },
+  bryce: {
+    canonical: 'Bryce Canyon',
+    countryPresetId: 'usa',
+    countryName: 'Stati Uniti',
+    emoji: '🇺🇸',
+    currency: 'USD',
+    rateFromEur: 1.08,
+    lat: 37.593,
+    lng: -112.1871
+  },
+  'bryce canyon': {
+    canonical: 'Bryce Canyon',
+    countryPresetId: 'usa',
+    countryName: 'Stati Uniti',
+    emoji: '🇺🇸',
+    currency: 'USD',
+    rateFromEur: 1.08,
+    lat: 37.593,
+    lng: -112.1871
+  },
+  page: {
+    canonical: 'Page',
+    countryPresetId: 'usa',
+    countryName: 'Stati Uniti',
+    emoji: '🇺🇸',
+    currency: 'USD',
+    rateFromEur: 1.08,
+    lat: 36.9147,
+    lng: -111.4558
+  },
+  'monument valley': {
+    canonical: 'Monument Valley',
+    countryPresetId: 'usa',
+    countryName: 'Stati Uniti',
+    emoji: '🇺🇸',
+    currency: 'USD',
+    rateFromEur: 1.08,
+    lat: 36.998,
+    lng: -110.0985
   },
   usa: {
     canonical: 'Stati Uniti',
@@ -745,6 +1017,202 @@ export const CITY_CATALOG: Record<string, CityInfo> = {
   },
 
   // =========================================================================
+  // MITTELEUROPA (AUSTRIA, REPUBBLICA CECA, UNGHERIA)
+  // =========================================================================
+  vienna: {
+    canonical: 'Vienna',
+    countryPresetId: 'europe',
+    countryName: 'Austria',
+    emoji: '🇦🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 48.2082,
+    lng: 16.3738,
+    stationOrAirportLat: 48.1853,
+    stationOrAirportLng: 16.3764
+  },
+  austria: {
+    canonical: 'Austria',
+    countryPresetId: 'europe',
+    countryName: 'Austria',
+    emoji: '🇦🇹',
+    currency: 'EUR',
+    rateFromEur: 1,
+    lat: 47.5162,
+    lng: 14.5501
+  },
+  praga: {
+    canonical: 'Praga',
+    countryPresetId: 'europe',
+    countryName: 'Repubblica Ceca',
+    emoji: '🇨🇿',
+    currency: 'CZK',
+    rateFromEur: 25.2,
+    lat: 50.0755,
+    lng: 14.4378,
+    stationOrAirportLat: 50.0831,
+    stationOrAirportLng: 14.4353
+  },
+  'repubblica ceca': {
+    canonical: 'Repubblica Ceca',
+    countryPresetId: 'europe',
+    countryName: 'Repubblica Ceca',
+    emoji: '🇨🇿',
+    currency: 'CZK',
+    rateFromEur: 25.2,
+    lat: 49.8175,
+    lng: 15.473
+  },
+  budapest: {
+    canonical: 'Budapest',
+    countryPresetId: 'europe',
+    countryName: 'Ungheria',
+    emoji: '🇭🇺',
+    currency: 'HUF',
+    rateFromEur: 400.0,
+    lat: 47.4979,
+    lng: 19.0402,
+    stationOrAirportLat: 47.5108,
+    stationOrAirportLng: 19.0573
+  },
+  ungheria: {
+    canonical: 'Ungheria',
+    countryPresetId: 'europe',
+    countryName: 'Ungheria',
+    emoji: '🇭🇺',
+    currency: 'HUF',
+    rateFromEur: 400.0,
+    lat: 47.1625,
+    lng: 19.5033
+  },
+
+  // =========================================================================
+  // SCANDINAVIA (SVEZIA, DANIMARCA)
+  // =========================================================================
+  stoccolma: {
+    canonical: 'Stoccolma',
+    countryPresetId: 'europe',
+    countryName: 'Svezia',
+    emoji: '🇸🇪',
+    currency: 'SEK',
+    rateFromEur: 11.4,
+    lat: 59.3293,
+    lng: 18.0686,
+    stationOrAirportLat: 59.3308,
+    stationOrAirportLng: 18.0583
+  },
+  svezia: {
+    canonical: 'Svezia',
+    countryPresetId: 'europe',
+    countryName: 'Svezia',
+    emoji: '🇸🇪',
+    currency: 'SEK',
+    rateFromEur: 11.4,
+    lat: 60.1282,
+    lng: 18.6435
+  },
+  copenaghen: {
+    canonical: 'Copenaghen',
+    countryPresetId: 'europe',
+    countryName: 'Danimarca',
+    emoji: '🇩🇰',
+    currency: 'DKK',
+    rateFromEur: 7.46,
+    lat: 55.6761,
+    lng: 12.5683,
+    stationOrAirportLat: 55.6728,
+    stationOrAirportLng: 12.5647
+  },
+  copenhagen: {
+    canonical: 'Copenaghen',
+    countryPresetId: 'europe',
+    countryName: 'Danimarca',
+    emoji: '🇩🇰',
+    currency: 'DKK',
+    rateFromEur: 7.46,
+    lat: 55.6761,
+    lng: 12.5683,
+    stationOrAirportLat: 55.6728,
+    stationOrAirportLng: 12.5647
+  },
+  danimarca: {
+    canonical: 'Danimarca',
+    countryPresetId: 'europe',
+    countryName: 'Danimarca',
+    emoji: '🇩🇰',
+    currency: 'DKK',
+    rateFromEur: 7.46,
+    lat: 56.2639,
+    lng: 9.5018
+  },
+
+  // =========================================================================
+  // INDONESIA & BALI
+  // =========================================================================
+  bali: {
+    canonical: 'Bali',
+    countryPresetId: 'custom',
+    countryName: 'Indonesia',
+    emoji: '🇮🇩',
+    currency: 'IDR',
+    rateFromEur: 17200,
+    lat: -8.4095,
+    lng: 115.1889
+  },
+  indonesia: {
+    canonical: 'Indonesia',
+    countryPresetId: 'custom',
+    countryName: 'Indonesia',
+    emoji: '🇮🇩',
+    currency: 'IDR',
+    rateFromEur: 17200,
+    lat: -0.7893,
+    lng: 113.9213
+  },
+  ubud: {
+    canonical: 'Ubud',
+    countryPresetId: 'custom',
+    countryName: 'Indonesia',
+    emoji: '🇮🇩',
+    currency: 'IDR',
+    rateFromEur: 17200,
+    lat: -8.5069,
+    lng: 115.2625
+  },
+  denpasar: {
+    canonical: 'Denpasar',
+    countryPresetId: 'custom',
+    countryName: 'Indonesia',
+    emoji: '🇮🇩',
+    currency: 'IDR',
+    rateFromEur: 17200,
+    lat: -8.6705,
+    lng: 115.2126,
+    stationOrAirportLat: -8.7482,
+    stationOrAirportLng: 115.1672
+  },
+  seminyak: {
+    canonical: 'Seminyak',
+    countryPresetId: 'custom',
+    countryName: 'Indonesia',
+    emoji: '🇮🇩',
+    currency: 'IDR',
+    rateFromEur: 17200,
+    lat: -8.6913,
+    lng: 115.1682
+  },
+  sanur: {
+    canonical: 'Sanur',
+    countryPresetId: 'custom',
+    countryName: 'Indonesia',
+    emoji: '🇮🇩',
+    currency: 'IDR',
+    rateFromEur: 17200,
+    lat: -8.6738,
+    lng: 115.2627
+  },
+
+  // =========================================================================
   // PERÙ
   // =========================================================================
   cusco: {
@@ -844,6 +1312,18 @@ export const CITY_CATALOG: Record<string, CityInfo> = {
     rateFromEur: 1.65,
     lat: -16.9186,
     lng: 145.7781
+  },
+  melbourne: {
+    canonical: 'Melbourne',
+    countryPresetId: 'custom',
+    countryName: 'Australia',
+    emoji: '🇦🇺',
+    currency: 'AUD',
+    rateFromEur: 1.65,
+    lat: -37.8136,
+    lng: 144.9631,
+    stationOrAirportLat: -37.669,
+    stationOrAirportLng: 144.841
   },
   sintra: {
     canonical: 'Sintra',
