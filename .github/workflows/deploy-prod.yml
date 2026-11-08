@@ -44,7 +44,9 @@ jobs:
         run: npm run build
 
       - name: Deploy to Firebase Hosting (Service Account)
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        env:
+          HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        if: ${{ env.HAS_SA != '' }}
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
@@ -53,5 +55,8 @@ jobs:
           projectId: tripwise-sync-lp94
 
       - name: Deploy to Firebase Hosting (Firebase Token fallback)
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT == '' && secrets.FIREBASE_TOKEN != '' }}
-        run: npx -y firebase-tools@latest deploy --only hosting --project tripwise-sync-lp94 --token "${{ secrets.FIREBASE_TOKEN }}"
+        env:
+          HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        if: ${{ env.HAS_SA == '' && env.FIREBASE_TOKEN != '' }}
+        run: npx -y firebase-tools@latest deploy --only hosting --project tripwise-sync-lp94 --token "$FIREBASE_TOKEN"
