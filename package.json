@@ -8,9 +8,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node tests/domain.test.mjs",
     "preview": "vite preview",
     "cap:sync": "npm run build && npx cap sync android",
-    "cap:open": "npx cap open android"
+    "cap:open": "npx cap open android",
+    "cloud:setup": "node scripts/setup-cloud-deploy.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",
