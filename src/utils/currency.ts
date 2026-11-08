@@ -1,4 +1,4 @@
-import { SUPPORTED_CURRENCIES } from '../data/presets';
+import { SUPPORTED_CURRENCIES } from '../data/presets.ts';
 
 /**
  * Postel's Law: Liberal input parser that accepts commas, dots, spaces, and currency symbols.
@@ -25,8 +25,19 @@ export function parseFlexibleAmount(raw: string): number {
       normalized = cleaned.replace(/,/g, '');
     }
   } else if (lastComma > -1) {
-    // Single comma -> treat as decimal separator (standard Italian input)
-    normalized = cleaned.replace(',', '.');
+    const commaCount = (cleaned.match(/,/g) || []).length;
+    if (commaCount > 1) {
+      normalized = cleaned.replace(/,/g, '');
+    } else {
+      // Single comma -> treat as decimal separator (standard Italian input)
+      normalized = cleaned.replace(',', '.');
+    }
+  } else if (lastDot > -1) {
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    if (dotCount > 1) {
+      // Multiple dots without comma (e.g. 1.000.000) -> thousands separators
+      normalized = cleaned.replace(/\./g, '');
+    }
   }
 
   const parsed = Number.parseFloat(normalized);

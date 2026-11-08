@@ -631,9 +631,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     let finalLocation = actLocation.trim();
     let finalGooglePlaceId = actGooglePlaceId;
     let finalMapUrl = actMapUrl;
-    let finalPhotos = actPhotos.length > 0 ? actPhotos : editingActivity?.photos;
-    let finalRating = actRating ?? editingActivity?.rating;
-    let finalUserRatingCount = actUserRatingCount ?? editingActivity?.userRatingCount;
+    let finalPhotos: string[] | undefined = actPhotos.length > 0 ? actPhotos : undefined;
+    let finalRating = actRating;
+    let finalUserRatingCount = actUserRatingCount;
 
     // Check if user pasted a Google Maps link or GPS coords directly without selecting from dropdown
     if (typeof finalLat !== 'number' || typeof finalLng !== 'number') {
@@ -1598,6 +1598,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                       onClick={() => {
                         setActLat('');
                         setActLng('');
+                        setActGooglePlaceId(undefined);
                       }}
                       className="underline font-normal opacity-80 hover:opacity-100 ml-1"
                     >
@@ -1615,9 +1616,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                   value={actLocation}
                   onChange={(e) => {
                     setActLocation(e.target.value);
-                    if (actLat || actLng) {
+                    if (actLat || actLng || actGooglePlaceId) {
                       setActLat('');
                       setActLng('');
+                      setActGooglePlaceId(undefined);
                     }
                   }}
                   onKeyDown={(e) => {

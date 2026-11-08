@@ -139,7 +139,7 @@ export async function hydrateTripsWithLocalAttachments(
     const nextBookings: Booking[] = [];
 
     for (const b of trip.bookings) {
-      if (!b.pdfDataUrl && (b.hasPdf || b.pdfFileName)) {
+      if (!b.pdfDataUrl && b.hasPdf !== false && (b.hasPdf || b.pdfFileName)) {
         let cached = await getLocalCachedPdf(trip.inviteCode, b.id);
         if (
           !cached &&
@@ -331,7 +331,7 @@ export async function downloadBookingPdfAttachment(
 export async function deleteBookingPdfAttachment(
   inviteCode: string,
   bookingId: string,
-  totalChunks = 5
+  totalChunks = 8
 ): Promise<void> {
   const code = normalizeInviteCode(inviteCode);
   if (!code || !bookingId) return;

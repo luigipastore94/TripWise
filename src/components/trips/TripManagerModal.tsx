@@ -95,6 +95,10 @@ export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreate
 
   const handleDestCurrencyChange = (code: string) => {
     setDestinationCurrency(code);
+    if (code === baseCurrency) {
+      setRateDraft('1');
+      return;
+    }
     const info = SUPPORTED_CURRENCIES.find((c) => c.code === code);
     if (info && baseCurrency === 'EUR') {
       setRateDraft(String(info.defaultRateFromEur));
@@ -121,6 +125,15 @@ export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreate
     e.preventDefault();
     const rate = parseFlexibleAmount(rateDraft);
     const isNatural = creationMode === 'natural' && parsedPlan;
+    const finalDestCurrency = destinationCurrency || (isNatural ? parsedPlan.detectedCurrency : 'EUR');
+    const finalExchangeRate =
+      baseCurrency === finalDestCurrency
+        ? 1
+        : rate > 0
+          ? rate
+          : isNatural
+            ? parsedPlan.detectedExchangeRate
+            : 1;
 
     const payload: CreateTripInput = {
       title:
@@ -139,8 +152,8 @@ export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreate
           ? endDate
           : startDate,
       baseCurrency,
-      destinationCurrency: isNatural ? parsedPlan.detectedCurrency : destinationCurrency,
-      exchangeRate: rate > 0 ? rate : isNatural ? parsedPlan.detectedExchangeRate : 1,
+      destinationCurrency: finalDestCurrency,
+      exchangeRate: finalExchangeRate,
       memberNames,
       includeSampleActivities: isNatural ? false : includeSamples,
       customDays: isNatural ? parsedPlan.days : undefined,
@@ -397,7 +410,13 @@ export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreate
             id={`${idPrefix}-base`}
             name="base_currency"
             value={baseCurrency}
-            onChange={(e) => setBaseCurrency(e.target.value)}
+            onChange={(e) => {
+              const code = e.target.value;
+              setBaseCurrency(code);
+              if (code === destinationCurrency) {
+                setRateDraft('1');
+              }
+            }}
             className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 font-semibold"
           >
             {SUPPORTED_CURRENCIES.map((c) => (
@@ -619,6 +638,7 @@ export const TripManagerModal: React.FC<TripManagerModalProps> = ({ open, onClos
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (

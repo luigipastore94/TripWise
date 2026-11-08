@@ -127,11 +127,14 @@ const AppShell: React.FC = () => {
 
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !activeTrip) return;
+    const targetTripId = activeTrip.id;
     setIsUploadingPhoto(true);
     try {
       const compressed = await compressImageToDataUrl(file, 1280, 0.82);
-      updateTripCoverImage(compressed);
+      if (activeTrip?.id === targetTripId) {
+        updateTripCoverImage(compressed);
+      }
     } catch (err) {
       console.warn('Cover photo error:', err);
     } finally {

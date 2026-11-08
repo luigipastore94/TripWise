@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import QRCode from 'qrcode';
 import {
   Plus,
@@ -21,7 +21,9 @@ import {
   Eye,
   AlertCircle,
   Loader2,
-  Smartphone
+  Smartphone,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
 import type { Booking, BookingType } from '../../types/trip';
@@ -193,6 +195,14 @@ export const BookingsView: React.FC = () => {
   const [openingExternal, setOpeningExternal] = useState(false);
   const [externalOpenMsg, setExternalOpenMsg] = useState<string | null>(null);
   const [showMobileIframe, setShowMobileIframe] = useState(false);
+  const filterStripRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedBookingId(null);
+    setPdfViewerBooking(null);
+    setQrViewerBooking(null);
+    setModalOpen(false);
+  }, [activeTrip?.id]);
 
   useEffect(() => {
     if (!qrViewerBooking) {
@@ -371,6 +381,7 @@ export const BookingsView: React.FC = () => {
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setFileError(null);
 
@@ -418,6 +429,7 @@ export const BookingsView: React.FC = () => {
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setFileError(null);
 
@@ -499,42 +511,70 @@ export const BookingsView: React.FC = () => {
     <section aria-label="Prenotazioni, Biglietti e Pass QR" className="space-y-4">
       {/* Top Action + Category Filter Strip */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-1">
           <button
             type="button"
-            onClick={() => handleSelectFilterType('all')}
-            aria-pressed={filterType === 'all'}
-            aria-selected={filterType === 'all'}
-            className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
-              filterType === 'all'
-                ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
-            }`}
+            onClick={() => filterStripRef.current?.scrollBy({ left: -220, behavior: 'smooth' })}
+            aria-label="Scorri categorie prenotazioni a sinistra"
+            className="hidden sm:inline-flex min-w-[34px] min-h-[38px] items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 shrink-0"
           >
-            Tutti ({activeTrip.bookings.length})
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           </button>
-          {(Object.keys(BOOKING_TYPES) as BookingType[]).map((t) => {
-            const meta = BOOKING_TYPES[t];
-            const Icon = meta.Icon;
-            const isFilterActive = filterType === t;
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => handleSelectFilterType(t)}
-                aria-pressed={isFilterActive}
-                aria-selected={isFilterActive}
-                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 transition-colors ${
-                  isFilterActive
-                    ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{meta.label}</span>
-              </button>
-            );
-          })}
+
+          <div
+            ref={filterStripRef}
+            onWheel={(e) => {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && filterStripRef.current) {
+                filterStripRef.current.scrollLeft += e.deltaY;
+              }
+            }}
+            className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth pb-1"
+          >
+            <button
+              type="button"
+              onClick={() => handleSelectFilterType('all')}
+              aria-pressed={filterType === 'all'}
+              aria-selected={filterType === 'all'}
+              className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                filterType === 'all'
+                  ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              Tutti ({activeTrip.bookings.length})
+            </button>
+            {(Object.keys(BOOKING_TYPES) as BookingType[]).map((t) => {
+              const meta = BOOKING_TYPES[t];
+              const Icon = meta.Icon;
+              const isFilterActive = filterType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => handleSelectFilterType(t)}
+                  aria-pressed={isFilterActive}
+                  aria-selected={isFilterActive}
+                  className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 transition-colors ${
+                    isFilterActive
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{meta.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => filterStripRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
+            aria-label="Scorri categorie prenotazioni a destra"
+            className="hidden sm:inline-flex min-w-[34px] min-h-[38px] items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 shrink-0"
+          >
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
+          </button>
         </div>
 
         <button
@@ -588,7 +628,10 @@ export const BookingsView: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => openEditModal(b)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(b);
+                        }}
                         aria-label={`Modifica ${b.title}`}
                         className="p-2 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                       >
@@ -596,7 +639,8 @@ export const BookingsView: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (selectedBookingId === b.id) setSelectedBookingId(null);
                           if (pdfViewerBooking?.id === b.id) setPdfViewerBooking(null);
                           if (qrViewerBooking?.id === b.id) setQrViewerBooking(null);
@@ -644,6 +688,7 @@ export const BookingsView: React.FC = () => {
                         href={buildExternalMapsUrl({ locationName: b.locationAddress })}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="text-brand-600 dark:text-brand-400 font-semibold inline-flex items-center gap-0.5 shrink-0 hover:underline"
                       >
                         <span>Mappa</span>
@@ -671,7 +716,10 @@ export const BookingsView: React.FC = () => {
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => handleOpenExternal(b)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleOpenExternal(b);
+                          }}
                           className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 font-bold hover:bg-red-50 inline-flex items-center gap-1 transition-colors"
                           aria-label={`Apri con app sul telefono per ${b.title}`}
                           title="Apri con un'app sul telefono"
@@ -682,7 +730,10 @@ export const BookingsView: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setPdfViewerBooking(b)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPdfViewerBooking(b);
+                          }}
                           className="shrink-0 text-slate-600 dark:text-slate-300 font-bold hover:underline inline-flex items-center gap-1 px-1.5 py-1"
                           aria-label={`Visualizza dettagli PDF ${b.title}`}
                         >
@@ -705,7 +756,10 @@ export const BookingsView: React.FC = () => {
                   {b.confirmationCode ? (
                     <button
                       type="button"
-                      onClick={() => copyCode(b.id, b.confirmationCode!)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void copyCode(b.id, b.confirmationCode!);
+                      }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                     >
                       <span>RIF: {b.confirmationCode}</span>
@@ -723,7 +777,10 @@ export const BookingsView: React.FC = () => {
                     {hasPdf && (
                       <button
                         type="button"
-                        onClick={() => setPdfViewerBooking(b)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPdfViewerBooking(b);
+                        }}
                         className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors"
                       >
                         <FileText className="w-4 h-4" aria-hidden="true" />
@@ -734,7 +791,10 @@ export const BookingsView: React.FC = () => {
                     {hasQr && (
                       <button
                         type="button"
-                        onClick={() => setQrViewerBooking(b)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQrViewerBooking(b);
+                        }}
                         className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors"
                       >
                         <QrCode className="w-4 h-4" aria-hidden="true" />

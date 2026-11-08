@@ -1,30 +1,23 @@
 import assert from 'node:assert/strict';
 import { runEvaluationHarness } from '../scripts/itinerary-training-loop.mjs';
+import {
+  parseFlexibleAmount,
+  convertToBase,
+  convertFromBase
+} from '../src/utils/currency.ts';
+import {
+  calculateTripBalances
+} from '../src/utils/split.ts';
 
-// 1. Flexible Currency Amount Parser (Postel's Law)
-function parseFlexibleAmount(raw) {
-  if (!raw) return 0;
-  const cleaned = raw.replace(/[^\d.,-]/g, '').trim();
-  if (!cleaned) return 0;
-  const lastComma = cleaned.lastIndexOf(',');
-  const lastDot = cleaned.lastIndexOf('.');
-  let normalized = cleaned;
-  if (lastComma > -1 && lastDot > -1) {
-    normalized =
-      lastComma > lastDot
-        ? cleaned.replace(/\./g, '').replace(',', '.')
-        : cleaned.replace(/,/g, '');
-  } else if (lastComma > -1) {
-    normalized = cleaned.replace(',', '.');
-  }
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
+// 1. Flexible Currency Amount Parser (Postel's Law) — real module import
 assert.equal(parseFlexibleAmount('12,50'), 12.5);
 assert.equal(parseFlexibleAmount('1.250,50 €'), 1250.5);
 assert.equal(parseFlexibleAmount('1,250.50'), 1250.5);
 assert.equal(parseFlexibleAmount('¥3500'), 3500);
+assert.equal(parseFlexibleAmount('1.000.000'), 1000000, 'BUG-14: multiple dots must be parsed as thousands separators');
+assert.equal(parseFlexibleAmount('1,250,000'), 1250000, 'BUG-14: multiple commas must be parsed as thousands separators');
+assert.equal(convertToBase(16250, 'JPY', 'EUR', 162.5), 100);
+assert.equal(convertFromBase(100, 'JPY', 'EUR', 162.5), 16250);
 
 // 2. Trip Date Resizing Logic (preserving existing activities)
 function addDaysIso(isoDate, offsetDays) {
@@ -1979,4 +1972,107 @@ const mergedCol = mergeExpenseCollections(
 assert.equal(mergedCol.length, 1);
 assert.equal(mergedCol[0].amount, 1350, 'Newer subcollection version must win over legacy parent array item');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine)');
+// 23. Bug Census Regression Suite (BUG-01, BUG-02, BUG-04)
+
+// 23a. BUG-01: Hydrated local pdfDataUrl on a booking MUST NOT trigger hasLocalChanges=true when remote booking metadata is identical
+const remoteWithBookingNoPdf = {
+  ...baseTripFixture,
+  bookings: [
+    {
+      id: 'bkg_shinkansen',
+      type: 'train',
+      title: 'Shinkansen Tokyo-Kyoto',
+      hasPdf: true,
+      pdfFileName: 'shinkansen.pdf',
+      pdfFileSize: 120000,
+      updatedAt: 5000
+    }
+  ],
+  updatedAt: 5000
+};
+const localWithHydratedPdf = {
+  ...remoteWithBookingNoPdf,
+  bookings: [
+    {
+      ...remoteWithBookingNoPdf.bookings[0],
+      pdfDataUrl: 'data:application/pdf;base64,JVBERi0xLjQK...'
+    }
+  ]
+};
+const bug01Merge = mergeTrips(remoteWithBookingNoPdf, localWithHydratedPdf, remoteWithBookingNoPdf);
+assert.equal(
+  bug01Merge.hasLocalChanges,
+  false,
+  'BUG-01: Local in-memory pdfDataUrl hydration must NOT flag hasLocalChanges=true against an identical remote booking'
+);
+assert.equal(
+  bug01Merge.merged.bookings[0].pdfDataUrl,
+  'data:application/pdf;base64,JVBERi0xLjQK...',
+  'BUG-01: Local pdfDataUrl must still be preserved in the merged booking object'
+);
+
+// 23b. BUG-02: Removing a PDF attachment (hasPdf: false, newer updatedAt) must NOT resurrect local pdfDataUrl
+const remoteRemovedPdf = {
+  ...remoteWithBookingNoPdf,
+  bookings: [
+    {
+      id: 'bkg_shinkansen',
+      type: 'train',
+      title: 'Shinkansen Tokyo-Kyoto',
+      hasPdf: false,
+      updatedAt: 6000
+    }
+  ],
+  updatedAt: 6000
+};
+const bug02Merge = mergeTrips(remoteWithBookingNoPdf, localWithHydratedPdf, remoteRemovedPdf);
+assert.equal(bug02Merge.merged.bookings[0].hasPdf, false, 'BUG-02: Remote PDF removal must win');
+assert.equal(
+  bug02Merge.merged.bookings[0].pdfDataUrl,
+  undefined,
+  'BUG-02: Removed PDF must NOT resurrect stale local pdfDataUrl'
+);
+
+// 23c. BUG-04: calculateTripBalances & calculateSettlements preserve zero-sum invariant even when an expense references a removed member
+const activeMembers = [
+  { id: 'm1', name: 'Alice', color: '#3b82f6' },
+  { id: 'm2', name: 'Marco', color: '#10b981' }
+];
+const expensesWithRemovedMember = [
+  // Split only with removed member m3 -> should fallback to activeMembers so paid == owed
+  {
+    id: 'exp_orphaned_split',
+    title: 'Taxi',
+    amount: 40,
+    currency: 'EUR',
+    amountInBase: 40,
+    paidByMemberId: 'm1',
+    splitBetweenMemberIds: ['m3_removed'],
+    category: 'transport',
+    date: '2026-11-22'
+  },
+  // Paid by removed member m3 -> should be ignored rather than creating negative net balance
+  {
+    id: 'exp_orphaned_payer',
+    title: 'Biglietto',
+    amount: 30,
+    currency: 'EUR',
+    amountInBase: 30,
+    paidByMemberId: 'm3_removed',
+    splitBetweenMemberIds: ['m1', 'm2'],
+    category: 'activities',
+    date: '2026-11-22'
+  }
+];
+const {
+  balances: balancesAfterRemoval,
+  settlements: settlementsAfterRemoval
+} = calculateTripBalances(expensesWithRemovedMember, activeMembers);
+const sumNet = balancesAfterRemoval.reduce((acc, b) => acc + b.netInBase, 0);
+assert.ok(Math.abs(sumNet) < 0.001, 'BUG-04: Sum of net balances across active members must always be 0');
+assert.equal(settlementsAfterRemoval.length, 1);
+assert.equal(settlementsAfterRemoval[0].fromMemberId, 'm2');
+assert.equal(settlementsAfterRemoval[0].toMemberId, 'm1');
+assert.equal(settlementsAfterRemoval[0].amountInBase, 20);
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine + Bug Census Regression Suite BUG-01..BUG-25)');

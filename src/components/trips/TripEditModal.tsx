@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { CalendarRange, Check, Trash2, AlertTriangle, Camera, Image as ImageIcon, X, Loader2, Users, Pencil } from 'lucide-react';
 import { ModalDialog } from '../ui/ModalDialog';
 import { useTrip } from '../../context/TripContext';
@@ -14,6 +14,7 @@ interface TripEditModalProps {
 export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) => {
   const { activeTrip, updateTripDatesAndDetails, deleteTrip, user, updateTripMeta, updateUserProfileName } = useTrip();
   const idPrefix = useId();
+  const initializedTripIdRef = useRef<string | null>(null);
 
   const [emoji, setEmoji] = useState('🌍');
   const [title, setTitle] = useState('');
@@ -31,21 +32,27 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
   const [editingMemberName, setEditingMemberName] = useState('');
 
   useEffect(() => {
-    if (activeTrip && open) {
-      setEmoji(activeTrip.emoji);
-      setTitle(activeTrip.title);
-      setDestination(activeTrip.destination);
-      setCoverImage(activeTrip.coverImage);
-      setPhotoError(null);
-      setStartDate(activeTrip.startDate);
-      setEndDate(activeTrip.endDate);
-      setBaseCurrency(activeTrip.baseCurrency);
-      setDestinationCurrency(activeTrip.destinationCurrency);
-      setRateDraft(String(activeTrip.exchangeRate));
-      setEditingMemberId(null);
-      setEditingMemberName('');
-      setConfirmDelete(false);
+    if (!open || !activeTrip) {
+      initializedTripIdRef.current = null;
+      return;
     }
+    if (initializedTripIdRef.current === activeTrip.id) {
+      return;
+    }
+    initializedTripIdRef.current = activeTrip.id;
+    setEmoji(activeTrip.emoji);
+    setTitle(activeTrip.title);
+    setDestination(activeTrip.destination);
+    setCoverImage(activeTrip.coverImage);
+    setPhotoError(null);
+    setStartDate(activeTrip.startDate);
+    setEndDate(activeTrip.endDate);
+    setBaseCurrency(activeTrip.baseCurrency);
+    setDestinationCurrency(activeTrip.destinationCurrency);
+    setRateDraft(String(activeTrip.exchangeRate));
+    setEditingMemberId(null);
+    setEditingMemberName('');
+    setConfirmDelete(false);
   }, [activeTrip, open]);
 
   if (!activeTrip) return null;
@@ -99,6 +106,8 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedRate = parseFlexibleAmount(rateDraft);
+    const effectiveRate =
+      baseCurrency === destinationCurrency ? 1 : parsedRate > 0 ? parsedRate : 1;
     updateTripDatesAndDetails({
       emoji,
       title,
@@ -108,7 +117,7 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
       endDate: endDate >= startDate ? endDate : startDate,
       baseCurrency,
       destinationCurrency,
-      exchangeRate: parsedRate > 0 ? parsedRate : 1
+      exchangeRate: effectiveRate
     });
     onClose();
   };
@@ -316,7 +325,13 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
               id={`${idPrefix}-base`}
               name="base_currency"
               value={baseCurrency}
-              onChange={(e) => setBaseCurrency(e.target.value)}
+              onChange={(e) => {
+                const code = e.target.value;
+                setBaseCurrency(code);
+                if (code === destinationCurrency) {
+                  setRateDraft('1');
+                }
+              }}
               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 font-semibold"
             >
               {SUPPORTED_CURRENCIES.map((c) => (
@@ -337,6 +352,10 @@ export const TripEditModal: React.FC<TripEditModalProps> = ({ open, onClose }) =
               onChange={(e) => {
                 const code = e.target.value;
                 setDestinationCurrency(code);
+                if (code === baseCurrency) {
+                  setRateDraft('1');
+                  return;
+                }
                 const info = SUPPORTED_CURRENCIES.find((c) => c.code === code);
                 if (info && baseCurrency === 'EUR') {
                   setRateDraft(String(info.defaultRateFromEur));

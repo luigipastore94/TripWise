@@ -247,14 +247,20 @@ export const InAppMap: React.FC<InAppMapProps> = ({
 
   useEffect(() => {
     if (!isExpanded || insideModal) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (document.querySelector('[data-photo-lightbox="true"]')) return;
         e.preventDefault();
         setIsExpanded(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [isExpanded, insideModal]);
 
   const geoActivities = useMemo(
@@ -325,6 +331,17 @@ export const InAppMap: React.FC<InAppMapProps> = ({
     if (geoActivities.length === 1) {
       gMap.setCenter({ lat: geoActivities[0].act.lat, lng: geoActivities[0].act.lng });
       gMap.setZoom(15);
+      return;
+    }
+
+    const lats = geoActivities.map((g) => g.act.lat);
+    const lngs = geoActivities.map((g) => g.act.lng);
+    const latSpan = Math.max(...lats) - Math.min(...lats);
+    const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+
+    if (!allowWorldSpan && (latSpan > 8 || lngSpan > 12)) {
+      gMap.setCenter({ lat: geoActivities[0].act.lat, lng: geoActivities[0].act.lng });
+      gMap.setZoom(13);
       return;
     }
 
@@ -522,6 +539,9 @@ export const InAppMap: React.FC<InAppMapProps> = ({
         requestAnimationFrame(() => {
           if (googleMapRef.current && googleSdk?.event) {
             googleSdk.event.trigger(googleMapRef.current, 'resize');
+            if (el.clientWidth > 0 && el.clientHeight > 0) {
+              fitPendingOnVisibleRef.current();
+            }
           }
         });
       });
@@ -635,6 +655,9 @@ export const InAppMap: React.FC<InAppMapProps> = ({
       const ro = new ResizeObserver(() => {
         requestAnimationFrame(() => {
           map.invalidateSize({ animate: false });
+          if (el.clientWidth > 0 && el.clientHeight > 0) {
+            fitPendingOnVisibleRef.current();
+          }
         });
       });
       ro.observe(el);
@@ -675,24 +698,68 @@ export const InAppMap: React.FC<InAppMapProps> = ({
     }
   }, [tileStyle, useGoogle]);
 
-  // Resize and camera invalidation on layout changes
-  useEffect(() => {
-    const layoutChanged = lastFittedLayoutKeyRef.current !== layoutKey;
-    lastFittedLayoutKeyRef.current = layoutKey;
+  const prevLayoutKeyRef = useRef<string>(layoutKey);
+  const fitPendingOnVisibleRef = useRef<() => void>(() => {});
 
-    if (useGoogle && googleMapRef.current && googleSdk) {
-      const gMap = googleMapRef.current;
-      googleSdk.event.trigger(gMap, 'resize');
-      if (layoutChanged && !selectedActivityId && !pickedState) {
-        fitGoogleStops(gMap, googleSdk, false);
-      }
-    } else if (mapRef.current) {
-      const map = mapRef.current;
-      map.invalidateSize({ animate: false });
-      if (layoutChanged && !selectedActivityId && !pickedState) {
-        fitLeafletStops(map, false);
+  fitPendingOnVisibleRef.current = () => {
+    const el = containerRef.current;
+    if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+    if (lastFittedLayoutKeyRef.current === layoutKey) return;
+    lastFittedLayoutKeyRef.current = layoutKey;
+    if (!selectedActivityId && !pickedState) {
+      if (useGoogle && googleMapRef.current && googleSdk) {
+        fitGoogleStops(googleMapRef.current, googleSdk, false);
+      } else if (mapRef.current) {
+        fitLeafletStops(mapRef.current, false);
       }
     }
+  };
+
+  // Clear transient picked preview and search dropdown when switching days or trips
+  useEffect(() => {
+    if (prevLayoutKeyRef.current !== layoutKey) {
+      prevLayoutKeyRef.current = layoutKey;
+      setPickedState(null);
+      setSearchResults([]);
+      setSearchError('');
+    }
+  }, [layoutKey]);
+
+  // Resize and camera invalidation on layout changes
+  useEffect(() => {
+    const el = containerRef.current;
+    const isVisible = Boolean(el && el.clientWidth > 0 && el.clientHeight > 0);
+    const layoutChanged = lastFittedLayoutKeyRef.current !== layoutKey;
+    if (isVisible) {
+      lastFittedLayoutKeyRef.current = layoutKey;
+    }
+
+    const syncMapViewport = () => {
+      const targetEl = containerRef.current;
+      if (!targetEl || targetEl.clientWidth === 0 || targetEl.clientHeight === 0) return;
+
+      if (useGoogle && googleMapRef.current && googleSdk) {
+        const gMap = googleMapRef.current;
+        googleSdk.event.trigger(gMap, 'resize');
+        if (layoutChanged && !selectedActivityId && !pickedState) {
+          fitGoogleStops(gMap, googleSdk, false);
+        }
+      } else if (mapRef.current) {
+        const map = mapRef.current;
+        map.invalidateSize({ animate: false });
+        if (layoutChanged && !selectedActivityId && !pickedState) {
+          fitLeafletStops(map, false);
+        }
+      }
+    };
+
+    const rafId = requestAnimationFrame(syncMapViewport);
+    const timerId = window.setTimeout(syncMapViewport, 150);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutKey, isFullMap, isExpanded, useGoogle]);
 

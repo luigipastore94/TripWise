@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Plus,
@@ -29,7 +29,9 @@ import {
   Music,
   Key,
   Compass,
-  FolderPlus
+  FolderPlus,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useTrip } from '../../context/TripContext';
 import type { ChecklistCategory } from '../../types/trip';
@@ -153,6 +155,7 @@ export const ChecklistView: React.FC = () => {
     deleteCustomChecklistCategory
   } = useTrip();
   const idPrefix = useId();
+  const assigneeStripRef = useRef<HTMLDivElement>(null);
 
   const [newText, setNewText] = useState('');
   const [newCategory, setNewCategory] = useState<string>('luggage');
@@ -171,6 +174,17 @@ export const ChecklistView: React.FC = () => {
   const [categoryModalName, setCategoryModalName] = useState('');
   const [categoryModalIcon, setCategoryModalIcon] = useState('Sparkles');
   const [categoryModalError, setCategoryModalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeTrip) return;
+    if (newAssignee !== 'shared' && !activeTrip.members.some((m) => m.id === newAssignee)) {
+      setNewAssignee('shared');
+    }
+    const customIds = (activeTrip.customChecklistCategories || []).map((c) => c.id);
+    if (!(newCategory in STANDARD_CHECKLIST_CATEGORIES) && !customIds.includes(newCategory)) {
+      setNewCategory('luggage');
+    }
+  }, [activeTrip, newAssignee, newCategory]);
 
   if (!activeTrip) return null;
 
@@ -229,11 +243,19 @@ export const ChecklistView: React.FC = () => {
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newText.trim()) return;
+    const validAssignee =
+      newAssignee === 'shared' || members.some((m) => m.id === newAssignee)
+        ? newAssignee
+        : 'shared';
+    const validCat =
+      newCategory in STANDARD_CHECKLIST_CATEGORIES || customCategoryIds.includes(newCategory)
+        ? newCategory
+        : 'luggage';
     addChecklistItem({
       text: newText.trim(),
-      category: newCategory,
+      category: validCat,
       completed: false,
-      assignedToMemberId: newAssignee
+      assignedToMemberId: validAssignee
     });
     setNewText('');
   };
@@ -285,52 +307,80 @@ export const ChecklistView: React.FC = () => {
         </div>
 
         {/* Filter by Member / Shared */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
+        <div className="flex items-center gap-1.5 pt-1">
           <button
             type="button"
-            onClick={() => handleSelectFilterAssignee('all')}
-            aria-pressed={effectiveFilterAssignee === 'all'}
-            aria-selected={effectiveFilterAssignee === 'all'}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-              effectiveFilterAssignee === 'all'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
-                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-            }`}
+            onClick={() => assigneeStripRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
+            aria-label="Scorri filtro partecipanti a sinistra"
+            className="hidden sm:inline-flex min-w-[32px] min-h-[34px] items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:bg-slate-100 shrink-0"
           >
-            Tutti
+            <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
+
+          <div
+            ref={assigneeStripRef}
+            onWheel={(e) => {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && assigneeStripRef.current) {
+                assigneeStripRef.current.scrollLeft += e.deltaY;
+              }
+            }}
+            className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth"
+          >
+            <button
+              type="button"
+              onClick={() => handleSelectFilterAssignee('all')}
+              aria-pressed={effectiveFilterAssignee === 'all'}
+              aria-selected={effectiveFilterAssignee === 'all'}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                effectiveFilterAssignee === 'all'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              Tutti
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectFilterAssignee('shared')}
+              aria-pressed={effectiveFilterAssignee === 'shared'}
+              aria-selected={effectiveFilterAssignee === 'shared'}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                effectiveFilterAssignee === 'shared'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              Condivisi
+            </button>
+            {members.map((m) => {
+              const isMemberActive = effectiveFilterAssignee === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => handleSelectFilterAssignee(m.id)}
+                  aria-pressed={isMemberActive}
+                  aria-selected={isMemberActive}
+                  className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                    isMemberActive
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {m.name}
+                </button>
+              );
+            })}
+          </div>
+
           <button
             type="button"
-            onClick={() => handleSelectFilterAssignee('shared')}
-            aria-pressed={effectiveFilterAssignee === 'shared'}
-            aria-selected={effectiveFilterAssignee === 'shared'}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-              effectiveFilterAssignee === 'shared'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
-                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-            }`}
+            onClick={() => assigneeStripRef.current?.scrollBy({ left: 200, behavior: 'smooth' })}
+            aria-label="Scorri filtro partecipanti a destra"
+            className="hidden sm:inline-flex min-w-[32px] min-h-[34px] items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:bg-slate-100 shrink-0"
           >
-            Condivisi
+            <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
-          {members.map((m) => {
-            const isMemberActive = effectiveFilterAssignee === m.id;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => handleSelectFilterAssignee(m.id)}
-                aria-pressed={isMemberActive}
-                aria-selected={isMemberActive}
-                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                  isMemberActive
-                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
-                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                {m.name}
-              </button>
-            );
-          })}
         </div>
       </div>
 

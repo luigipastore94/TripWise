@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Sparkles,
   CalendarRange,
@@ -35,6 +35,8 @@ export const NaturalProgramComposer: React.FC<NaturalProgramComposerProps> = ({
 }) => {
   const idPrefix = useId();
   const [showAllPreviewDays, setShowAllPreviewDays] = useState(false);
+  const onPlanParsedRef = useRef(onPlanParsed);
+  onPlanParsedRef.current = onPlanParsed;
 
   const parsedPlan = useMemo<ParsedItineraryPlan | null>(() => {
     if (!value.trim()) return null;
@@ -46,8 +48,8 @@ export const NaturalProgramComposer: React.FC<NaturalProgramComposerProps> = ({
   }, [value, referenceYear, enrichFreeDays]);
 
   useEffect(() => {
-    onPlanParsed?.(parsedPlan);
-  }, [parsedPlan, onPlanParsed]);
+    onPlanParsedRef.current?.(parsedPlan);
+  }, [parsedPlan]);
 
   const visibleDays = useMemo(() => {
     if (!parsedPlan) return [];
