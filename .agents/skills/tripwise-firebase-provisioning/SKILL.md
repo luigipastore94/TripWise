@@ -12,7 +12,13 @@ description: >-
 ## Core Principle
 End users of TripWise must NEVER paste `firebaseConfig` or visit developer consoles. All Firebase credentials live in `.env` (`VITE_FIREBASE_*`) generated automatically via CLI.
 
-## Automated Setup Steps
+## Single-Command Automated Setup
+Run the unified provisioning script to verify the active Google account, select the Firebase project, populate `.env` + `android/app/google-services.json`, and deploy Google Sign-In Auth + Firestore rules/indexes:
+```bash
+npm run cloud:setup
+```
+
+## Step-by-Step Reference
 
 1. **Check CLI Login**:
    `npx.cmd -y firebase-tools@latest login:list`

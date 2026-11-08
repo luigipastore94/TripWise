@@ -1,7 +1,20 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-const projectId = process.argv[2];
+function resolveProjectId() {
+  if (process.argv[2]) return process.argv[2].trim();
+  if (existsSync('.firebaserc')) {
+    try {
+      const rc = JSON.parse(readFileSync('.firebaserc', 'utf8'));
+      if (rc?.projects?.default) return rc.projects.default.trim();
+    } catch {
+      // ignore
+    }
+  }
+  return '';
+}
+
+const projectId = resolveProjectId();
 if (!projectId) {
   console.error('Usage: node write-env.mjs <FIREBASE_PROJECT_ID>');
   process.exit(1);
@@ -26,13 +39,20 @@ if (!cfg?.apiKey || !cfg?.projectId) {
   process.exit(1);
 }
 
+const preservedLines = existsSync('.env')
+  ? readFileSync('.env', 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0 && !line.trim().startsWith('VITE_FIREBASE_'))
+  : [];
+
 const envLines = [
   `VITE_FIREBASE_API_KEY=${cfg.apiKey}`,
   `VITE_FIREBASE_AUTH_DOMAIN=${cfg.authDomain || `${cfg.projectId}.firebaseapp.com`}`,
   `VITE_FIREBASE_PROJECT_ID=${cfg.projectId}`,
   `VITE_FIREBASE_STORAGE_BUCKET=${cfg.storageBucket || ''}`,
   `VITE_FIREBASE_MESSAGING_SENDER_ID=${cfg.messagingSenderId || ''}`,
-  `VITE_FIREBASE_APP_ID=${cfg.appId || ''}`
+  `VITE_FIREBASE_APP_ID=${cfg.appId || ''}`,
+  ...preservedLines
 ];
 
 writeFileSync('.env', envLines.join('\n') + '\n', 'utf8');
