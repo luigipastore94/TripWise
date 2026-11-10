@@ -60,3 +60,12 @@ jobs:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         if: ${{ env.HAS_SA == '' && env.FIREBASE_TOKEN != '' }}
         run: npx -y firebase-tools@latest deploy --only hosting --project tripwise-sync-lp94 --token "$FIREBASE_TOKEN"
+
+      - name: Verify Firebase Deploy Credentials
+        env:
+          HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          HAS_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        if: ${{ env.HAS_SA == '' && env.HAS_TOKEN == '' }}
+        run: |
+          echo "::error::Deploy su Firebase Hosting non eseguito: nessun secret (FIREBASE_SERVICE_ACCOUNT o FIREBASE_TOKEN) configurato nei GitHub Secrets. Esegui 'npm run cloud:setup' da C:\Progetti\TripWise per configurare le credenziali ed effettuare il deploy."
+          exit 1
