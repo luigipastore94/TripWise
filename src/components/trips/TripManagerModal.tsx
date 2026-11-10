@@ -26,7 +26,7 @@ import { parseFlexibleAmount } from '../../utils/currency';
 import { compressImageToDataUrl } from '../../utils/imageCompression';
 import { ModalDialog } from '../ui/ModalDialog';
 import { NaturalProgramComposer } from './NaturalProgramComposer';
-import type { ParsedItineraryPlan } from '../../utils/naturalItineraryParser';
+import { parseNaturalLanguageItinerary, type ParsedItineraryPlan } from '../../utils/naturalItineraryParser';
 
 export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreated }) => {
   const { createTrip } = useTrip();
@@ -124,30 +124,34 @@ export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreate
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const rate = parseFlexibleAmount(rateDraft);
-    const isNatural = creationMode === 'natural' && parsedPlan;
-    const finalDestCurrency = destinationCurrency || (isNatural ? parsedPlan.detectedCurrency : 'EUR');
+    const effectivePlan =
+      creationMode === 'natural' && humanText.trim()
+        ? parsedPlan ?? parseNaturalLanguageItinerary(humanText, { enrichFreeDays })
+        : parsedPlan;
+    const isNatural = creationMode === 'natural' && effectivePlan;
+    const finalDestCurrency = destinationCurrency || (isNatural ? effectivePlan.detectedCurrency : 'EUR');
     const finalExchangeRate =
       baseCurrency === finalDestCurrency
         ? 1
         : rate > 0
           ? rate
           : isNatural
-            ? parsedPlan.detectedExchangeRate
+            ? effectivePlan.detectedExchangeRate
             : 1;
 
     const payload: CreateTripInput = {
       title:
         title.trim() ||
-        (isNatural ? parsedPlan.suggestedTitle : `Viaggio ${destination.trim() || 'TripWise'}`),
+        (isNatural ? effectivePlan.suggestedTitle : `Viaggio ${destination.trim() || 'TripWise'}`),
       destination:
         destination.trim() ||
-        (isNatural ? parsedPlan.detectedDestination : selectedPreset.destination || 'Mondo'),
-      emoji: isNatural ? emoji || parsedPlan.detectedEmoji : emoji,
+        (isNatural ? effectivePlan.detectedDestination : selectedPreset.destination || 'Mondo'),
+      emoji: isNatural ? emoji || effectivePlan.detectedEmoji : emoji,
       coverImage,
-      presetId: isNatural ? parsedPlan.detectedPresetId : presetId,
-      startDate: isNatural ? parsedPlan.startDate : startDate,
+      presetId: isNatural ? effectivePlan.detectedPresetId : presetId,
+      startDate: isNatural ? effectivePlan.startDate : startDate,
       endDate: isNatural
-        ? parsedPlan.endDate
+        ? effectivePlan.endDate
         : endDate >= startDate
           ? endDate
           : startDate,
@@ -156,8 +160,8 @@ export const TripCreatorForm: React.FC<{ onCreated?: () => void }> = ({ onCreate
       exchangeRate: finalExchangeRate,
       memberNames,
       includeSampleActivities: isNatural ? false : includeSamples,
-      customDays: isNatural ? parsedPlan.days : undefined,
-      defaultCenter: isNatural ? parsedPlan.defaultCenter : undefined
+      customDays: isNatural ? effectivePlan.days : undefined,
+      defaultCenter: isNatural ? effectivePlan.defaultCenter : undefined
     };
 
     createTrip(payload);

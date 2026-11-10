@@ -2075,4 +2075,147 @@ assert.equal(settlementsAfterRemoval[0].fromMemberId, 'm2');
 assert.equal(settlementsAfterRemoval[0].toMemberId, 'm1');
 assert.equal(settlementsAfterRemoval[0].amountInBase, 20);
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine + Bug Census Regression Suite BUG-01..BUG-25)');
+// Regression Test: Zero-width space (\u200B) Japan 15-day outline with pipe syntax, complex dates, and continuation lines
+const zeroWidthJapanItinerary = [
+  'Programma Definitivo: Giappone (22 Nov – 06 Dic)',
+  '\u200BTAPPA 1: Tokyo & Kamakura (5 Notti)',
+  '\u200B22 Nov (Dom) – Giorno 1: Arrivo a Tokyo',
+  '\u200B12:00 | Atterraggio e Check-in: Arrivo a Tokyo Narita o Haneda, ritiro bagagli e trasferimento in hotel a Shinjuku.',
+  '\u200B18:30 | Akihabara Electric Town: Passeggiata serale tra le luci al neon, negozi di elettronica e manga.',
+  '\u200B23 Nov (Lun - Festa Nazionale) – Giorno 2: Da Shinjuku a Shibuya',
+  '\u200B09:00 | Santuario Meiji Jingu: Visita al grande santuario shintoista immerso nella foresta.',
+  '\u200B11:30 | Shinjuku Gyoen: Passeggiata nel grande parco tra splendidi aceri in foliage.',
+  '\u200B15:00 | Shinjuku Centro: Vista sul famoso gatto 3D (Cross Shinjuku Vision, uscita Est) e via commerciale.',
+  '\u200B18:00 | Shibuya Crossing & Hachiko: L’incrocio pedonale più trafficato del mondo e statua di Hachiko.',
+  '\u200B24 Nov (Mar) – Giorno 3: Gita a Kamakura & Costa di Shonan',
+  '\u200B08:30 | Partenza per Kamakura: Treno linea JR Yokosuka dalla stazione di Shinjuku o Tokyo.',
+  '\u200B10:00 | Meigetsu-in (Kita-Kamakura): Famoso tempio zen con la finestra rotonda sul giardino d’autunno.',
+  '\u200B13:30 | Kotoku-in (Grande Buddha di Kamakura): La monumentale statua in bronzo all’aperto.',
+  '\u200B16:00 | Spiaggia di Inamuragasaki: Relax sul litorale di Shonan dove è possibile vedere la sagoma del Monte Fuji stagliarsi sull\'oceano al tramonto.',
+  '\u200B25 Nov (Mer) – Giorno 4: Odaiba, Ginza & Roppongi',
+  '\u200B08:30 | teamLab Planets: Esperienza digitale immersiva d’arte contemporanea a Toyosu.',
+  '\u200B11:30 | Statua della Libertà di Odaiba & Rainbow Bridge: Passeggiata sulla baia di Tokyo con vista sul Rainbow Bridge.',
+  '\u200B15:00 | Ginza & Teatro Kabuki-za: Quartiere dell’eleganza e della moda con sosta fotografica davanti al celebre teatro Kabuki-za.',
+  '\u200B19:00 | Keyakizaka Dori (Roppongi Hills): Spettacolare viale alberato con illuminazioni natalizie bianche e blu con vista Tokyo Tower.',
+  '\u200B26 Nov (Gio) – Giorno 5: Tokyo Storica & Tramonto',
+  '\u200B09:00 | Palazzo Imperiale: Giardini orientali e ponte Nijubashi.',
+  '\u200B11:30 | Parco di Ueno: Passeggiata nel parco storico e stagno Shinobazu.',
+  '\u200B14:30 | Asakusa & Tempio Senso-ji: Il tempio buddista più antico di Tokyo e la via Nakamise-dori.',
+  '\u200B17:30 | Tokyo Skytree: Vista panoramica della metropoli dall’osservatorio al crepuscolo.',
+  '\u200BTAPPA 2: Monte Fuji / 5 Laghi (1 Notte)',
+  '\u200B27 Nov (Ven) – Giorno 6: Il tunnel di aceri e il Ryokan',
+  '\u200BLogistica Bagagli (Spedizione Valigie): Spedisci i bagagli grandi dall\'hotel di Tokyo direttamente a quello di Kyoto. Viaggia solo con uno zaino leggero per la notte al Fuji.',
+  '\u200B08:00 | Partenza per Lago Kawaguchiko: Bus espresso Highway Bus da Shinjuku verso Fujisan / Kawaguchiko.',
+  '\u200B11:30 | Momiji Corridor (Corridoio degli Aceri): Famosa passeggiata sotto il tunnel di foglie rosse d\'acero.',
+  '\u200B14:00 | Pagoda Chureito: Salita dei gradini per ammirare l\'iconica vista della pagoda a cinque piani con il Monte Fuji.',
+  '\u200BSe il Giorno 1 era nuvoloso: Salita alla Pagoda Chureito per recuperare la vista.',
+  '\u200BSe il Giorno 1 era limpido: Visita alternativa a Oishi Park sulla sponda nord del lago Kawaguchi.',
+  '\u200B18:30 | Cena e Onsen in Ryokan: Cena kaiseki tradizionale e bagno termale rilassante.',
+  '\u200BTAPPA 3: Kyoto (4 Notti)',
+  '\u200B28 Nov (Sab) – Giorno 7: Benvenuti a Kyoto & Gion',
+  '\u200B08:30 | Trasferimento a Kyoto: Spostamento in treno/bus dal Monte Fuji verso la capitale culturale.',
+  '\u200BBus espresso Mishima-Kawaguchiko fino alla stazione di Mishima.',
+  '\u200BDa Mishima, Shinkansen Tokaido verso la stazione di Kyoto.',
+  '\u200BCheck-in in hotel a Kyoto e deposito zaini.',
+  '\u200B15:00 | Gion Shirakawa & Via Hanamikoji: Passeggiata nel quartiere delle geishe tra case in legno machiya.',
+  '\u200B17:00 | Cerimonia del tè tradizionale MAIKOYA (sede Gion/Kiyomizu): Esperienza autentica del rito del tè matcha.',
+  '\u200BQuale sede prenotare: Preferire la sede centrale nei pressi di Gion.',
+  '\u200BCon il kimono: Presentarsi 30 minuti prima dell\'orario per la vestizione.',
+  '\u200BSenza kimono: Ingresso diretto 10 minuti prima della cerimonia.',
+  '\u200B19:30 | Pontocho & Fiume Kamogawa: Atmosfera serale nei vicoli storici con lanterne accese lungo il fiume.',
+  '\u200B29 Nov (Dom) – Giorno 8: Kyoto Classica & Light-up Eikan-do',
+  '\u200B06:30 | Tempio Kiyomizu-dera: Visita all\'alba della grande terrazza in legno prima dell\'arrivo dei gruppi.',
+  '\u200B08:30 | Sannenzaka e Ninenzaka: Discesa a piedi attraverso le suggestive vie acciottolate preservate.',
+  '\u200B10:30 | Tempio Kodai-ji e Santuario Yasaka: Giardini zen in pietra, bosco di bambù e lanterne sacre a Yasaka.',
+  '\u200B14:00 | Padiglione d\'Oro (Kinkaku-ji) & Ryoan-ji: Il tempio dorato riflesso nello specchio d\'acqua e il famoso giardino secco.',
+  '\u200B17:30 | Tempio Eikan-do (Zenrin-ji): Spettacolare illuminazione notturna (light-up) tra gli aceri secolari e lo stagno.',
+  '\u200B30 Nov (Lun) – Giorno 9: Arashiyama & Treno Panoramico Sagano',
+  '\u200B08:00 | Foresta di Bambù di Arashiyama: Passeggiata tra le canne di bambù ondeggianti al mattino presto.',
+  '\u200B09:30 | Ponte Togetsukyo & Fiume Katsura: Il ponte della luna che attraversa le acque con vista sui monti colorati.',
+  '\u200B11:00 | Tempio Tenryu-ji & Tempio Jojakko-ji: Splendido giardino circolare Sogenchi e pagoda nel bosco d\'aceri.',
+  '\u200B14:00 | Villa Okochi Sanso: Residenza storica con incantevole giardino panoramico.',
+  '\u200B15:30 | Sagano Romantic Train: Viaggio panoramico sul trenino d\'epoca lungo le gole del fiume Hozu.',
+  '\u200B01 Dic (Mar) – Giorno 10: Fushimi Inari & Filosofia',
+  '\u200B07:00 | Santuario Fushimi Inari Taisha: Passeggiata solitaria sotto le migliaia di torii vermigli lungo il monte.',
+  '\u200B11:00 | Sentiero della Filosofia & Ginkaku-ji: Passeggiata lungo il canale alberato e visita al Padiglione d\'Argento.',
+  '\u200BCosa assaggiare: Dolci yatsuhashi alla cannella e gelato al matcha lungo la via.',
+  '\u200B14:30 | Tempio Honen-in & Nanzen-ji: Tempio raccolto nella foresta e l\'imponente porta Sanmon con l\'acquedotto romano.',
+  '\u200B02 Dic (Mer) – Giorno 11: Uji, Nara & Trasferimento a Hiroshima',
+  '\u200BNota colazione: Sveglia presto e colazione veloce in hotel o konbini per ottimizzare gli spostamenti con bagaglio.',
+  '\u200B08:00 | Uji & Tempio Byodoin: La terra del matcha e la famosa Sala della Fenice raffigurata sulla moneta da 10 yen.',
+  '\u200B11:30 | Nara Park & Todai-ji: Incontro con i cervi shika in libertà e visita al Grande Buddha Daibutsu.',
+  '\u200BDa lì un bus (101, 102, 204, 205) per la stazione ferroviaria.',
+  '\u200B14:30 | Tempio Kofuku-ji & Santuario Kasuga Taisha: Pagoda a cinque piani e santuario scintoista con lanterne in bronzo.',
+  '\u200B17:30 | Shinkansen per Hiroshima: Treno ad alta velocità Shinkansen verso Hiroshima e sistemazione in hotel.',
+  '\u200BTAPPA 4: Hiroshima (2 Notti)',
+  '\u200B03 Dic (Gio) – Giorno 12: Hiroshima & Isola di Miyajima',
+  '\u200B08:30 | Parco del Memoriale della Pace & Cupola Genbaku: Luogo di memoria storica universale e museo della pace.',
+  '\u200B12:30 | Isola di Miyajima & Santuario Itsukushima: Traghetto per l\'isola sacra, grande torii galleggiante nell\'acqua e Tempio Daisho-in (chiude alle 17:00, ultimo ingresso ore 16:15).',
+  '\u200B18:30 | Rientro a Hiroshima: Cena tipica a base di Hiroshima-yaki (okonomiyaki a strati con soba noodles).',
+  '\u200BTAPPA 5: Osaka (3 Notti)',
+  '\u200B04 Dic (Ven) – Giorno 13: Castello di Himeji & Trasferimento a Osaka',
+  '\u200B08:30 | Shinkansen per Himeji: Breve viaggio in treno proiettile con sosta per visita monumentale.',
+  '\u200B09:30 | Castello di Himeji & Giardino Koko-en: Il più maestoso castello medievale originale del Giappone (l\'Airone Bianco) e splendidi nove giardini recintati.',
+  '\u200B14:00 | Shinkansen per Osaka & Check-in: Arrivo a Osaka e sistemazione in alloggio a Namba.',
+  '\u200B18:00 | Dotonbori: Il vivace cuore notturno di Osaka, con l\'insegna Glico Man e cibo di strada.',
+  '\u200B05 Dic (Sab) – Giorno 14: Universal Studios Japan',
+  '\u200B08:00 | Universal Studios Japan: Giornata intera di divertimento tra Super Nintendo World e il Wizarding World of Harry Potter.',
+  '\u200B06 Dic (Dom) – Giorno 15: Rientro in Italia',
+  '\u200B09:30 | Castello di Osaka & Parco: Vista panoramica esterna (senza entrare nel museo moderno interno, avendo già visitato l\'originale a Himeji).',
+  '\u200B12:00 | Shinsekai & Torre Tsutenkaku: Quartiere retro nostalgico anni \'50 con la caratteristica torre.',
+  '\u200BCosa mangiare: Spiedini fritti kushikatsu tipici di Shinsekai da gustare caldi.',
+  '\u200B17:30 | Volo di rientro da Osaka: Raggiungere l\'aeroporto internazionale del Kansai (KIX) per il volo di ritorno in Italia.'
+].join('\n');
+
+const zeroWidthPlan = parseNaturalLanguageItinerary(zeroWidthJapanItinerary, { referenceYear: 2026 });
+assert.equal(zeroWidthPlan.isValid, true, 'Zero-width Japan plan must be valid');
+assert.equal(zeroWidthPlan.days.length, 15, 'Must generate exactly 15 days');
+assert.equal(zeroWidthPlan.startDate, '2026-11-22', 'Start date must be 2026-11-22');
+assert.equal(zeroWidthPlan.endDate, '2026-12-06', 'End date must be 2026-12-06');
+assert.ok(zeroWidthPlan.suggestedTitle.includes('Giappone'), 'Suggested title must include Giappone');
+
+// Assert all 15 day titles start with "Giorno N:"
+for (let i = 0; i < 15; i++) {
+  const d = zeroWidthPlan.days[i];
+  assert.ok(
+    d.title.startsWith(`Giorno ${i + 1}:`),
+    `Day ${i + 1} title "${d.title}" must start with "Giorno ${i + 1}:"`
+  );
+}
+
+const allZeroWidthActivities = zeroWidthPlan.days.flatMap((d) => d.activities);
+
+// Assert no activity title contains stray "|" or broken parentheses
+for (const act of allZeroWidthActivities) {
+  assert.ok(!act.title.includes('|'), `Activity title "${act.title}" must not contain stray pipe`);
+  assert.ok(
+    !/\b(?:101|102|Uscita Est\)|Ultimo ingresso\b)/i.test(act.title),
+    `Activity title "${act.title}" must not contain broken parenthetical fragments`
+  );
+}
+
+// Day 4: Odaiba Statue of Liberty must NOT match New York (lat < 40)
+const day4Statue = zeroWidthPlan.days[3].activities.find((a) =>
+  a.title.toLowerCase().includes('statua della libert')
+);
+assert.ok(day4Statue, 'Day 4 must include Statua della Liberta');
+assert.ok(
+  typeof day4Statue.lat === 'number' && day4Statue.lat > 35 && day4Statue.lat < 36,
+  'Statua della Liberta must be in Tokyo/Odaiba (lat ~35.6), not New York (lat 40.7)'
+);
+
+// Day 15: Osaka Castle must NOT match Castello di Himeji due to negation clause
+const day15Acts = zeroWidthPlan.days[14].activities;
+assert.ok(
+  !day15Acts.some((a) => a.title.toLowerCase().includes('himeji')),
+  'Day 15 must not match Castello di Himeji from past comparison clause'
+);
+
+// Day 3: Kamakura beach backdrop must NOT match Mount Fuji in Yamanashi
+const day3Acts = zeroWidthPlan.days[2].activities;
+assert.ok(
+  !day3Acts.some((a) => a.title.toLowerCase().includes('monte fuji') || a.title.toLowerCase().includes('lago kawaguchiko')),
+  'Day 3 Kamakura must not match Mount Fuji / Kawaguchiko'
+);
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + Zero-Width Japan 15-Day Parser Suite + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine + Bug Census Regression Suite BUG-01..BUG-25)');
