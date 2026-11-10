@@ -48,6 +48,7 @@ import {
   mergeExpenseCollections,
   type SyncStatusValue
 } from '../utils/expenseSync';
+import { convertToBase } from '../utils/currency';
 
 const LEGACY_TRIPS_STORAGE_KEY = 'tripwise_trips_v1';
 const LAST_SYNCED_STORAGE_KEY = 'tripwise_last_synced_trips_v1';
@@ -643,7 +644,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!match || !match.bookings) return currentTrip;
       let changed = false;
       const nextBookings = (currentTrip.bookings || []).map((b) => {
-        if (b.pdfDataUrl) return b;
+        if (b.pdfDataUrl || b.hasPdf === false) return b;
         const hydratedBooking = match.bookings?.find((hb) => hb.id === b.id);
         if (hydratedBooking?.pdfDataUrl) {
           changed = true;
@@ -833,23 +834,48 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Cross-tab instant local sync
   useEffect(() => {
+    const syncLoadedTripsFromOtherTab = (uid: string) => {
+      const loaded = loadUserLocalTrips(uid);
+      // Preserve already hydrated in-memory pdfDataUrl for bookings that still have hasPdf !== false
+      const prevMap = new Map(tripsRef.current.map((t) => [t.id, t]));
+      const mergedWithMemoryPdfs = loaded.map((trip) => {
+        const prevTrip = prevMap.get(trip.id);
+        if (!prevTrip || !trip.bookings) return trip;
+        const prevBookingsMap = new Map((prevTrip.bookings || []).map((b) => [b.id, b]));
+        return {
+          ...trip,
+          bookings: trip.bookings.map((b) => {
+            if (b.pdfDataUrl || b.hasPdf === false) return b;
+            const prevB = prevBookingsMap.get(b.id);
+            if (prevB?.pdfDataUrl && (b.hasPdf || b.pdfFileName)) {
+              return { ...b, pdfDataUrl: prevB.pdfDataUrl, hasPdf: true };
+            }
+            return b;
+          })
+        };
+      });
+      tripsRef.current = mergedWithMemoryPdfs;
+      setTrips(mergedWithMemoryPdfs);
+      hydrateTripsWithLocalAttachments(mergedWithMemoryPdfs)
+        .then(({ hydratedTrips, didChange }) => {
+          if (didChange) applyHydratedAttachments(hydratedTrips);
+        })
+        .catch(() => {});
+    };
+
     if ('BroadcastChannel' in window) {
       const bc = new BroadcastChannel('tripwise_local_sync');
       broadcastRef.current = bc;
       bc.onmessage = (ev) => {
         if (ev.data?.type === 'TRIPS_UPDATED' && user?.uid && ev.data?.uid === user.uid) {
-          const loaded = loadUserLocalTrips(user.uid);
-          tripsRef.current = loaded;
-          setTrips(loaded);
+          syncLoadedTripsFromOtherTab(user.uid);
         }
       };
     }
 
     const handleStorage = (e: StorageEvent) => {
       if (user?.uid && e.key === getUserTripsStorageKey(user.uid)) {
-        const loaded = loadUserLocalTrips(user.uid);
-        tripsRef.current = loaded;
-        setTrips(loaded);
+        syncLoadedTripsFromOtherTab(user.uid);
       } else if (e.key === 'color-scheme') {
         const val = e.newValue === 'light' || e.newValue === 'dark' ? e.newValue : 'light dark';
         setColorSchemeState(val);
@@ -863,7 +889,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       broadcastRef.current?.close();
       window.removeEventListener('storage', handleStorage);
     };
-  }, [user?.uid]);
+  }, [applyHydratedAttachments, user?.uid]);
 
   // Observe Google Auth state & automatically initialize user session
   useEffect(() => {
@@ -1727,11 +1753,34 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (hasMissingCoords) {
         enrichItineraryDaysWithGeocoding(days, newTrip.defaultCenter)
           .then((enrichedDays) => {
-            const next = tripsRef.current.map((t) =>
-              t.id === newTrip.id
-                ? { ...t, days: enrichedDays, updatedAt: Date.now() }
-                : t
-            );
+            const enrichedActMap = new Map<string, Activity>();
+            for (const ed of enrichedDays) {
+              for (const ea of ed.activities) {
+                if (typeof ea.lat === 'number' && typeof ea.lng === 'number') {
+                  enrichedActMap.set(ea.id, ea);
+                }
+              }
+            }
+            if (enrichedActMap.size === 0) return;
+
+            const next = tripsRef.current.map((t) => {
+              if (t.id !== newTrip.id) return t;
+              const mergedDays = t.days.map((d) => ({
+                ...d,
+                activities: d.activities.map((a) => {
+                  if (typeof a.lat === 'number' && typeof a.lng === 'number') return a;
+                  const resolved = enrichedActMap.get(a.id);
+                  if (!resolved) return a;
+                  return {
+                    ...a,
+                    lat: resolved.lat,
+                    lng: resolved.lng,
+                    locationName: a.locationName || resolved.locationName
+                  };
+                })
+              }));
+              return { ...t, days: mergedDays, updatedAt: Date.now() };
+            });
             tripsRef.current = next;
             setTrips(next);
             persistTripsLocally(next);
@@ -1756,11 +1805,19 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (matches.length > 0) {
               const center: [number, number] = [matches[0].lat, matches[0].lng];
               const next = tripsRef.current.map((t) =>
-                t.id === newTrip.id ? { ...t, defaultCenter: center } : t
+                t.id === newTrip.id
+                  ? { ...t, defaultCenter: center, updatedAt: Date.now() }
+                  : t
               );
               tripsRef.current = next;
               setTrips(next);
               persistTripsLocally(next);
+              const updatedTarget = next.find((t) => t.id === newTrip.id);
+              if (updatedTarget && isCloudAvailable && user?.uid) {
+                runTrackedCloudOp(() => pushTripToCloud(updatedTarget))
+                  .then(() => updateLastSyncedTrip(updatedTarget))
+                  .catch(() => {});
+              }
             }
           })
           .catch(() => {});
@@ -2224,7 +2281,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateTripMeta: TripContextValue['updateTripMeta'] = useCallback(
     (patch) => {
       mutateActiveTrip((trip) => {
-        const next = {
+        const next: TripData = {
           ...trip,
           ...patch
         };
@@ -2237,7 +2294,55 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .filter((uid): uid is string => Boolean(uid));
           if (user?.uid) nextUids.push(user.uid);
           next.memberUids = Array.from(new Set(nextUids));
+
+          // Clean up orphaned member references in expenses and checklist if a member was removed
+          const validMemberIds = new Set(patch.members.map((m) => m.id));
+          const allRemainingIds = patch.members.map((m) => m.id);
+          if (allRemainingIds.length > 0) {
+            next.expenses = (next.expenses || []).map((exp) => {
+              const filteredSplit = (exp.splitBetweenMemberIds || []).filter((id) =>
+                validMemberIds.has(id)
+              );
+              const nextSplit =
+                filteredSplit.length > 0 ? filteredSplit : allRemainingIds;
+              if (nextSplit.length === (exp.splitBetweenMemberIds || []).length) {
+                return exp;
+              }
+              return {
+                ...exp,
+                splitBetweenMemberIds: nextSplit,
+                updatedAt: Date.now()
+              };
+            });
+          }
+          next.checklist = (next.checklist || []).map((c) => {
+            if (c.assignedToMemberId && !validMemberIds.has(c.assignedToMemberId)) {
+              const { assignedToMemberId: _removed, ...rest } = c;
+              return { ...rest, updatedAt: Date.now() };
+            }
+            return c;
+          });
         }
+
+        // Recalculate amountInBase on existing expenses if exchangeRate or baseCurrency changed
+        const rateChanged =
+          typeof patch.exchangeRate === 'number' &&
+          patch.exchangeRate > 0 &&
+          patch.exchangeRate !== trip.exchangeRate;
+        const baseChanged =
+          typeof patch.baseCurrency === 'string' &&
+          patch.baseCurrency.toUpperCase() !== trip.baseCurrency.toUpperCase();
+
+        if ((rateChanged || baseChanged) && Array.isArray(next.expenses) && next.expenses.length > 0) {
+          const targetBase = (next.baseCurrency || 'EUR').toUpperCase();
+          const targetRate = next.exchangeRate > 0 ? next.exchangeRate : 1;
+          next.expenses = next.expenses.map((exp) => ({
+            ...exp,
+            amountInBase: convertToBase(exp.amount, exp.currency, targetBase, targetRate),
+            updatedAt: Date.now()
+          }));
+        }
+
         return next;
       });
     },
@@ -2248,12 +2353,32 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (input: UpdateTripDetailsInput) => {
       const nextDest = input.destination.trim();
       const prevDest = activeTrip?.destination ?? '';
+      const targetTripId = activeTrip?.id;
 
       mutateActiveTrip((trip) => {
         const safeStart = input.startDate || trip.startDate;
         const safeEnd =
           input.endDate && input.endDate >= safeStart ? input.endDate : safeStart;
         const nextDays = reconcileDaysWithDateRange(trip.days, safeStart, safeEnd);
+        const nextBase = input.baseCurrency.toUpperCase() || trip.baseCurrency;
+        const nextDestCurr = input.destinationCurrency.toUpperCase() || trip.destinationCurrency;
+        const nextRate =
+          nextBase === nextDestCurr
+            ? 1
+            : input.exchangeRate > 0
+              ? input.exchangeRate
+              : trip.exchangeRate;
+
+        const rateOrBaseChanged =
+          nextRate !== trip.exchangeRate || nextBase !== trip.baseCurrency;
+        const nextExpenses =
+          rateOrBaseChanged && Array.isArray(trip.expenses)
+            ? trip.expenses.map((exp) => ({
+                ...exp,
+                amountInBase: convertToBase(exp.amount, exp.currency, nextBase, nextRate),
+                updatedAt: Date.now()
+              }))
+            : trip.expenses;
 
         const nextTrip: TripData = {
           ...trip,
@@ -2262,10 +2387,11 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
           emoji: input.emoji || trip.emoji,
           startDate: safeStart,
           endDate: safeEnd,
-          baseCurrency: input.baseCurrency.toUpperCase() || trip.baseCurrency,
-          destinationCurrency: input.destinationCurrency.toUpperCase() || trip.destinationCurrency,
-          exchangeRate: input.exchangeRate > 0 ? input.exchangeRate : trip.exchangeRate,
-          days: nextDays
+          baseCurrency: nextBase,
+          destinationCurrency: nextDestCurr,
+          exchangeRate: nextRate,
+          days: nextDays,
+          expenses: nextExpenses
         };
 
         if ('coverImage' in input) {
@@ -2279,20 +2405,40 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return nextTrip;
       });
 
-      if (nextDest && nextDest.toLowerCase() !== 'mondo' && nextDest !== prevDest) {
+      if (targetTripId && nextDest && nextDest.toLowerCase() !== 'mondo' && nextDest !== prevDest) {
         searchPlaces(nextDest)
           .then((matches) => {
             if (matches.length > 0) {
-              mutateActiveTrip((trip) => ({
-                ...trip,
-                defaultCenter: [matches[0].lat, matches[0].lng]
-              }));
+              const center: [number, number] = [matches[0].lat, matches[0].lng];
+              const next = tripsRef.current.map((t) =>
+                t.id === targetTripId
+                  ? { ...t, defaultCenter: center, updatedAt: Date.now() }
+                  : t
+              );
+              tripsRef.current = next;
+              setTrips(next);
+              persistTripsLocally(next);
+              const updatedTarget = next.find((t) => t.id === targetTripId);
+              if (updatedTarget && isCloudAvailable && user?.uid) {
+                runTrackedCloudOp(() => pushTripToCloud(updatedTarget))
+                  .then(() => updateLastSyncedTrip(updatedTarget))
+                  .catch(() => {});
+              }
             }
           })
           .catch(() => {});
       }
     },
-    [activeTrip?.destination, mutateActiveTrip]
+    [
+      activeTrip?.destination,
+      activeTrip?.id,
+      isCloudAvailable,
+      mutateActiveTrip,
+      persistTripsLocally,
+      runTrackedCloudOp,
+      updateLastSyncedTrip,
+      user?.uid
+    ]
   );
 
   const updateTripCoverImage = useCallback(
@@ -2315,30 +2461,93 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!days || days.length === 0) return;
       const startIso = days[0].date;
       const endIso = days[days.length - 1].date;
+      const targetTripId = activeTrip?.id;
 
-      mutateActiveTrip((trip) => ({
-        ...trip,
-        ...(metaPatch ?? {}),
-        startDate: startIso || trip.startDate,
-        endDate: endIso || trip.endDate,
-        days
-      }));
+      mutateActiveTrip((trip) => {
+        const next: TripData = {
+          ...trip,
+          ...(metaPatch ?? {}),
+          startDate: startIso || trip.startDate,
+          endDate: endIso || trip.endDate,
+          days
+        };
+        if (
+          typeof metaPatch?.exchangeRate === 'number' &&
+          metaPatch.exchangeRate > 0 &&
+          metaPatch.exchangeRate !== trip.exchangeRate &&
+          Array.isArray(next.expenses)
+        ) {
+          next.expenses = next.expenses.map((exp) => ({
+            ...exp,
+            amountInBase: convertToBase(
+              exp.amount,
+              exp.currency,
+              next.baseCurrency,
+              metaPatch.exchangeRate!
+            ),
+            updatedAt: Date.now()
+          }));
+        }
+        return next;
+      });
 
       const hasMissingCoords = days.some((d) =>
         d.activities.some((a) => typeof a.lat !== 'number' || typeof a.lng !== 'number')
       );
-      if (hasMissingCoords) {
+      if (hasMissingCoords && targetTripId) {
         enrichItineraryDaysWithGeocoding(days, metaPatch?.defaultCenter ?? activeTrip?.defaultCenter)
           .then((enrichedDays) => {
-            mutateActiveTrip((trip) => ({
-              ...trip,
-              days: enrichedDays
-            }));
+            const enrichedActMap = new Map<string, Activity>();
+            for (const ed of enrichedDays) {
+              for (const ea of ed.activities) {
+                if (typeof ea.lat === 'number' && typeof ea.lng === 'number') {
+                  enrichedActMap.set(ea.id, ea);
+                }
+              }
+            }
+            if (enrichedActMap.size === 0) return;
+
+            const next = tripsRef.current.map((t) => {
+              if (t.id !== targetTripId) return t;
+              const mergedDays = t.days.map((d) => ({
+                ...d,
+                activities: d.activities.map((a) => {
+                  if (typeof a.lat === 'number' && typeof a.lng === 'number') return a;
+                  const resolved = enrichedActMap.get(a.id);
+                  if (!resolved) return a;
+                  return {
+                    ...a,
+                    lat: resolved.lat,
+                    lng: resolved.lng,
+                    locationName: a.locationName || resolved.locationName
+                  };
+                })
+              }));
+              return { ...t, days: mergedDays, updatedAt: Date.now() };
+            });
+            tripsRef.current = next;
+            setTrips(next);
+            persistTripsLocally(next);
+            const updatedTarget = next.find((t) => t.id === targetTripId);
+            if (updatedTarget && isCloudAvailable && user?.uid) {
+              runTrackedCloudOp(() => pushTripToCloud(updatedTarget))
+                .then(() => updateLastSyncedTrip(updatedTarget))
+                .catch(() => {});
+            }
           })
           .catch(() => {});
       }
     },
-    [activeTrip?.defaultCenter, mutateActiveTrip]
+    [
+      activeTrip?.defaultCenter,
+      activeTrip?.id,
+      isCloudAvailable,
+      mutateActiveTrip,
+      persistTripsLocally,
+      runTrackedCloudOp,
+      updateLastSyncedTrip,
+      user?.uid
+    ]
   );
 
   const addDay = useCallback(
@@ -2768,11 +2977,20 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const upsertBooking = useCallback(
     (booking: Booking) => {
       mutateActiveTrip((trip) => {
+        const prevBooking = trip.bookings.find((b) => b.id === booking.id);
+        if (
+          prevBooking &&
+          (prevBooking.hasPdf || prevBooking.pdfDataUrl || prevBooking.pdfFileName) &&
+          !booking.hasPdf &&
+          !booking.pdfDataUrl
+        ) {
+          deleteBookingPdfAttachment(trip.inviteCode, booking.id).catch(() => {});
+        }
         const itemWithTime: Booking = {
           ...booking,
           updatedAt: Date.now()
         };
-        const exists = trip.bookings.some((b) => b.id === booking.id);
+        const exists = Boolean(prevBooking);
         const nextBookings = exists
           ? trip.bookings.map((b) => (b.id === booking.id ? itemWithTime : b))
           : [itemWithTime, ...trip.bookings];
@@ -2894,17 +3112,65 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const importTripJson = useCallback(
     (jsonText: string): { ok: boolean; message: string } => {
       try {
-        const parsed = JSON.parse(jsonText) as TripData;
-        if (!parsed || !parsed.title || !Array.isArray(parsed.days)) {
+        const parsed = JSON.parse(jsonText) as Partial<TripData>;
+        if (!parsed || typeof parsed.title !== 'string' || !parsed.title.trim() || !Array.isArray(parsed.days)) {
           return { ok: false, message: 'Formato file non valido.' };
         }
-        const uids = new Set(parsed.memberUids ?? []);
+        const uids = new Set(Array.isArray(parsed.memberUids) ? parsed.memberUids : []);
         if (user?.uid) uids.add(user.uid);
+        const normalizedCode = normalizeInviteCode(parsed.inviteCode || '');
+        const validCode = /^TW-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(normalizedCode)
+          ? normalizedCode
+          : generateInviteCode(parsed.destination || parsed.title);
+        const todayIso = getLocalTodayIso(0);
+        const startDate =
+          typeof parsed.startDate === 'string' && parsed.startDate
+            ? parsed.startDate
+            : parsed.days[0]?.date || todayIso;
+        const endDate =
+          typeof parsed.endDate === 'string' && parsed.endDate >= startDate
+            ? parsed.endDate
+            : parsed.days[parsed.days.length - 1]?.date || startDate;
+        const defaultMembers: Member[] =
+          Array.isArray(parsed.members) && parsed.members.length > 0
+            ? parsed.members
+            : [
+                {
+                  id: 'mem_1',
+                  name: user?.displayName || 'Viaggiatore 1',
+                  color: MEMBER_COLORS[0],
+                  uid: user?.uid
+                }
+              ];
+        const defaultCenter: [number, number] =
+          Array.isArray(parsed.defaultCenter) &&
+          parsed.defaultCenter.length === 2 &&
+          typeof parsed.defaultCenter[0] === 'number' &&
+          typeof parsed.defaultCenter[1] === 'number'
+            ? [parsed.defaultCenter[0], parsed.defaultCenter[1]]
+            : [41.9028, 12.4964];
+
         const safeTrip: TripData = {
-          ...parsed,
+          ...(parsed as TripData),
           id: parsed.id || generateId('trip'),
-          inviteCode: parsed.inviteCode || generateInviteCode(parsed.destination || parsed.title),
-          expenses: sortExpensesDeterministically(parsed.expenses || []),
+          inviteCode: validCode,
+          title: parsed.title.trim(),
+          destination: (parsed.destination || parsed.title).trim(),
+          emoji: parsed.emoji || '🌍',
+          startDate,
+          endDate,
+          baseCurrency: (parsed.baseCurrency || 'EUR').toUpperCase(),
+          destinationCurrency: (parsed.destinationCurrency || parsed.baseCurrency || 'EUR').toUpperCase(),
+          exchangeRate:
+            typeof parsed.exchangeRate === 'number' && parsed.exchangeRate > 0
+              ? parsed.exchangeRate
+              : 1,
+          defaultCenter,
+          members: defaultMembers,
+          bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [],
+          checklist: Array.isArray(parsed.checklist) ? parsed.checklist : [],
+          savedPlaces: Array.isArray(parsed.savedPlaces) ? parsed.savedPlaces : [],
+          expenses: sortExpensesDeterministically(Array.isArray(parsed.expenses) ? parsed.expenses : []),
           memberUids: Array.from(uids),
           updatedAt: Date.now()
         };
@@ -2934,6 +3200,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({ children
       runTrackedCloudOp,
       selectTrip,
       updateLastSyncedTrip,
+      user?.displayName,
       user?.uid
     ]
   );

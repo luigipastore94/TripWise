@@ -38,8 +38,13 @@ export function compressImageToDataUrl(
         ctx.fillRect(0, 0, targetWidth, targetHeight);
         ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-        // Standardized lightweight JPEG format suitable for offline caching & cloud sync
-        const compressed = canvas.toDataURL('image/jpeg', quality);
+        // Standardized lightweight JPEG format suitable for offline caching & cloud sync (< 380KB)
+        let currentQuality = quality;
+        let compressed = canvas.toDataURL('image/jpeg', currentQuality);
+        while (compressed.length > 380_000 && currentQuality > 0.35) {
+          currentQuality = Math.round((currentQuality - 0.12) * 100) / 100;
+          compressed = canvas.toDataURL('image/jpeg', currentQuality);
+        }
         resolve(compressed);
       };
       img.src = reader.result as string;

@@ -1,0 +1,71 @@
+name: Deploy TripWise Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-production-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Quality Gate, Build & Firebase Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run TypeScript & Domain Quality Gate
+        run: |
+          npm run typecheck
+          node tests/domain.test.mjs
+
+      - name: Build Production Bundle (Vite + PWA)
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+        run: npm run build
+
+      - name: Deploy to Firebase Hosting (Service Account)
+        env:
+          HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        if: ${{ env.HAS_SA != '' }}
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: tripwise-sync-lp94
+
+      - name: Deploy to Firebase Hosting (Firebase Token fallback)
+        env:
+          HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        if: ${{ env.HAS_SA == '' && env.FIREBASE_TOKEN != '' }}
+        run: npx -y firebase-tools@latest deploy --only hosting --project tripwise-sync-lp94 --token "$FIREBASE_TOKEN"
+
+      - name: Verify Firebase Deploy Credentials
+        env:
+          HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          HAS_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        if: ${{ env.HAS_SA == '' && env.HAS_TOKEN == '' }}
+        run: |
+          echo "::error::Deploy su Firebase Hosting non eseguito: nessun secret (FIREBASE_SERVICE_ACCOUNT o FIREBASE_TOKEN) configurato nei GitHub Secrets. Esegui 'npm run cloud:setup' da C:\Progetti\TripWise per configurare le credenziali ed effettuare il deploy."
+          exit 1

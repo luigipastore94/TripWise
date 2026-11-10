@@ -141,12 +141,29 @@ export function normalizeDiacritics(str: string): string {
   return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
-function lookupKnownPlace(rawText: string, contextCity?: string): KnownPlaceEntry | undefined {
+export function lookupKnownPlace(
+  rawText: string,
+  context?: string | { baseCity?: string; countryPresetId?: string }
+): KnownPlaceEntry | undefined {
   if (!rawText) return undefined;
-  const lower = rawText.trim().toLowerCase();
+
+  const ctxObj = typeof context === 'string' ? { baseCity: context } : context;
+
+  // Filter out negation, past comparison, and distance backdrop phrases
+  const sanitized = rawText
+    .replace(/\([^)]*(?:senza\s+(?:entrare|visitare)|avendo\s+gi[àa]\s+visitato|gi[àa]\s+visto|rispetto\s+a)[^)]*\)/gi, ' ')
+    .replace(/\b(?:senza\s+(?:entrare|visitare)|avendo\s+gi[àa]\s+visitato|gi[àa]\s+visto)\s+[^,.;()]+/gi, ' ')
+    .replace(/\b(?:sagoma|profilo|vista|sfondo)\s+(?:del\s+)?(?:monte\s+fuji|fuji)\b/gi, ' ');
+
+  const lower = sanitized.trim().toLowerCase();
   const normText = normalizeDiacritics(lower);
   let bestMatch: KnownPlaceEntry | undefined;
-  let bestLen = 0;
+  let bestScore = -Infinity;
+
+  const targetPreset =
+    ctxObj?.countryPresetId ||
+    (ctxObj?.baseCity ? lookupCityInfo(ctxObj.baseCity)?.countryPresetId : undefined);
+  const targetCityNorm = ctxObj?.baseCity ? normalizeDiacritics(ctxObj.baseCity.toLowerCase()) : undefined;
 
   const GENERIC_KEYWORDS = new Set([
     'mercato del pesce',
@@ -182,16 +199,37 @@ function lookupKnownPlace(rawText: string, contextCity?: string): KnownPlaceEntr
 
       if (reLower.test(lower) || reNorm.test(normText)) {
         // If keyword is generic, guard against cross-country/city hallucination
-        if (GENERIC_KEYWORDS.has(kw.toLowerCase()) && contextCity) {
-          const entryLoc = (entry.locationName || '').toLowerCase();
-          const target = contextCity.toLowerCase();
-          if (!entryLoc.includes(target) && !entry.canonicalName.toLowerCase().includes(target)) {
+        if (GENERIC_KEYWORDS.has(kw.toLowerCase()) && targetCityNorm) {
+          const entryLoc = normalizeDiacritics(entry.locationName || '');
+          const entryCan = normalizeDiacritics(entry.canonicalName || '');
+          const entryCity = entry.city ? normalizeDiacritics(entry.city) : '';
+          if (
+            !entryLoc.includes(targetCityNorm) &&
+            !entryCan.includes(targetCityNorm) &&
+            entryCity !== targetCityNorm
+          ) {
             continue;
           }
         }
 
-        if (kw.length > bestLen) {
-          bestLen = kw.length;
+        let score = kw.length;
+        if (targetPreset) {
+          if (entry.countryPresetId === targetPreset) {
+            score += 1000;
+          } else if (entry.countryPresetId && entry.countryPresetId !== targetPreset) {
+            score -= 5000;
+          }
+        }
+        if (targetCityNorm) {
+          const locNorm = normalizeDiacritics(entry.locationName.toLowerCase());
+          const cityNorm = entry.city ? normalizeDiacritics(entry.city.toLowerCase()) : '';
+          if (locNorm.includes(targetCityNorm) || cityNorm === targetCityNorm) {
+            score += 500;
+          }
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
           bestMatch = entry;
         }
       }
@@ -199,6 +237,8 @@ function lookupKnownPlace(rawText: string, contextCity?: string): KnownPlaceEntr
   }
   return bestMatch;
 }
+
+const INVISIBLE_CHARS_RE = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
 
 /**
  * Extracts explicit HH:MM or semantic time hints ("ore 12.50", "ore 08:30", "ore 16", "presto la mattina", "pomeriggio/sera")
@@ -210,7 +250,7 @@ function extractTimeAndCleanText(raw: string): {
   cleanedText: string;
   extraNote?: string;
 } {
-  let working = raw.trim();
+  let working = raw.replace(INVISIBLE_CHARS_RE, '').trim();
   let explicitTime: string | undefined;
   let timeBucket:
     | 'early_morning'
@@ -223,33 +263,102 @@ function extractTimeAndCleanText(raw: string): {
     | undefined;
   let extraNote: string | undefined;
 
-  // 1. Time range with prefix e.g. "ore 06:30 - 07:00" or "07:00 - 07:30"
-  const rangeTimeRe = /\b(?:ore\s*)?(\d{1,2}[:.]\d{2})\s*(?:-|–|—)\s*(\d{1,2}[:.]\d{2})\b/i;
-  const rm = working.match(rangeTimeRe);
-  if (rm) {
-    const rawStart = rm[1].replace('.', ':');
-    const [hh, mm] = rawStart.split(':').map(Number);
-    explicitTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-    extraNote = `Fascia consigliata: ${rm[1]} - ${rm[2]}`;
-    working = working.replace(rangeTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
+  // 0. Pipe syntax e.g. "<TimeOrRange> | <Content>"
+  const pipeIdx = working.indexOf('|');
+  if (pipeIdx > 0 && pipeIdx < 45) {
+    const timePortion = working.slice(0, pipeIdx).trim();
+    const rightPortion = working.slice(pipeIdx + 1).trim();
+
+    // Range with optional parens/slashes or sunset: "09:00 – 11:30", "13:20 (o 14:20) – 17:30/18:30", "12:30 – Tramonto"
+    const rangeMatch = timePortion.match(
+      /^(?:dalle?\s+)?([0-2]?\d[:.][0-5]\d)(?:\s*\([^)]*\))?\s*(?:-|–|—)\s*([0-2]?\d[:.][0-5]\d(?:(?:\/|\s*o\s*)[0-2]?\d[:.][0-5]\d)?|tramonto)$/i
+    );
+    if (rangeMatch) {
+      const rawStart = rangeMatch[1].replace('.', ':');
+      const [hh, mm] = rawStart.split(':').map(Number);
+      explicitTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+      if (rangeMatch[2].toLowerCase() === 'tramonto') {
+        timeBucket = 'sunset';
+        extraNote = `Permanenza: ${timePortion}`;
+      } else {
+        extraNote = `Fascia consigliata: ${timePortion}`;
+      }
+      working = rightPortion;
+    } else {
+      // Single explicit time e.g. "12:00", "Dalle 16:30", "ore 08:30"
+      const singleMatch = timePortion.match(/^(?:dalle?\s+|ore\s+|alle\s+|h\s*)?([0-2]?\d)[:.]([0-5]\d)$/i);
+      if (singleMatch) {
+        const hh = Number(singleMatch[1]);
+        const mm = Number(singleMatch[2]);
+        explicitTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        working = rightPortion;
+      } else if (/^intera\s+giornata$/i.test(timePortion)) {
+        timeBucket = 'morning';
+        extraNote = 'Intera giornata dedicata.';
+        working = rightPortion;
+      } else if (/^tarda\s+mattina\s*(?:-|–|—)\s*pomeriggio$/i.test(timePortion)) {
+        timeBucket = 'late_morning';
+        working = rightPortion;
+      } else if (/^pomeriggio\s+e\s+tramonto$/i.test(timePortion)) {
+        timeBucket = 'afternoon';
+        working = rightPortion;
+      } else if (/^mattina$/i.test(timePortion)) {
+        timeBucket = 'morning';
+        working = rightPortion;
+      } else if (/^pomeriggio$/i.test(timePortion)) {
+        timeBucket = 'afternoon';
+        working = rightPortion;
+      } else if (/^sera(?:ta)?$/i.test(timePortion)) {
+        timeBucket = 'evening';
+        working = rightPortion;
+      }
+    }
   }
 
-  // 2. Explicit time with prefix: "ore 12.50", "ore 08:30", "ore 16", "alle 9:15", "h 14.00", "per le 11:00", "verso le 20:30"
+  // 1. Time range with prefix e.g. "ore 06:30 - 07:00" or "07:00 - 07:30"
   if (!explicitTime) {
-    const prefixedTimeRe = /\b(?:con\s+arrivo\s+)?(?:ore|alle|h|per\s+le|verso\s+le|intorno\s+alle|circa\s+alle|fino\s+alle)\s*(\d{1,2})(?:[:.](\d{2}))?\b/i;
+    const rangeTimeRe = /\b(?:ore\s*)?([0-2]?\d[:.][0-5]\d)\s*(?:-|–|—)\s*([0-2]?\d[:.][0-5]\d)\b/i;
+    const rm = working.match(rangeTimeRe);
+    if (rm && rm.index !== undefined) {
+      const beforeMatch = working.slice(0, rm.index);
+      const isInsideParens = (beforeMatch.split('(').length - 1) > (beforeMatch.split(')').length - 1);
+      const isDeadline = /\b(?:chiude\s+alle|ultimo\s+ingresso\s+(?:ore|alle)?|entro\s+le|fino\s+alle|apertura\s+ore|aperti\s+dalle)\s*$/i.test(beforeMatch);
+      if (!isInsideParens && !isDeadline) {
+        const rawStart = rm[1].replace('.', ':');
+        const [hh, mm] = rawStart.split(':').map(Number);
+        explicitTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        extraNote = `Fascia consigliata: ${rm[1]} - ${rm[2]}`;
+        working = working.replace(rangeTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
+      }
+    }
+  }
+
+  // 2. Explicit time with prefix: "dalle 16:30", "ore 12.50", "ore 08:30", "ore 16", "alle 9:15", "h 14.00", "per le 11:00", "verso le 20:30"
+  if (!explicitTime) {
+    const prefixedTimeRe = /\b(?:con\s+arrivo\s+)?(?:dalle?\s+|ore\s+|alle\s+|h\s*|per\s+le\s+|verso\s+le\s+|intorno\s+alle\s+|circa\s+alle\s+)([0-2]?\d)(?:[:.]([0-5]\d))?\b/i;
     const pm = working.match(prefixedTimeRe);
-    if (pm) {
-      const hh = Math.min(Math.max(Number(pm[1]), 0), 23);
-      const mm = pm[2] ? Math.min(Math.max(Number(pm[2]), 0), 59) : 0;
-      explicitTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-      working = working.replace(prefixedTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
+    if (pm && pm.index !== undefined) {
+      const beforeMatch = working.slice(0, pm.index);
+      const isInsideParens = (beforeMatch.split('(').length - 1) > (beforeMatch.split(')').length - 1);
+      const isDeadline = /\b(?:chiude\s+alle|ultimo\s+ingresso\s+(?:ore|alle)?|entro\s+le|fino\s+alle|apertura\s+ore|aperti\s+dalle)\s*$/i.test(beforeMatch);
+      if (!isInsideParens && !isDeadline) {
+        const hh = Math.min(Math.max(Number(pm[1]), 0), 23);
+        const mm = pm[2] ? Math.min(Math.max(Number(pm[2]), 0), 59) : 0;
+        explicitTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        working = working.replace(prefixedTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
+      }
     } else {
-      // Standalone HH:MM with colon (avoiding DD/MM dates)
+      // Standalone HH:MM with colon (avoiding DD/MM dates and parens)
       const colonTimeRe = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
       const cm = working.match(colonTimeRe);
-      if (cm) {
-        explicitTime = `${String(Number(cm[1])).padStart(2, '0')}:${cm[2]}`;
-        working = working.replace(colonTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (cm && cm.index !== undefined) {
+        const beforeMatch = working.slice(0, cm.index);
+        const isInsideParens = (beforeMatch.split('(').length - 1) > (beforeMatch.split(')').length - 1);
+        const isDeadline = /\b(?:chiude\s+alle|ultimo\s+ingresso\s+(?:ore|alle)?|entro\s+le|fino\s+alle|apertura\s+ore|aperti\s+dalle)\s*$/i.test(beforeMatch);
+        if (!isInsideParens && !isDeadline) {
+          explicitTime = `${String(Number(cm[1])).padStart(2, '0')}:${cm[2]}`;
+          working = working.replace(colonTimeRe, ' ').replace(/\s{2,}/g, ' ').trim();
+        }
       }
     }
   }
@@ -297,7 +406,7 @@ function extractTimeAndCleanText(raw: string): {
     .replace(/\(\s*\)/g, '')
     .replace(/\b(?:con\s+arrivo|arrivo\s+previsto|arrivo)?\s*(?:per\s+le|verso\s+le|alle|ore|h)\s*$/i, '')
     .replace(/\s+([.,;:])/g, '$1')
-    .replace(/^[,;:\-–—\s.]+|[,;:\-–—\s.]+$/g, '')
+    .replace(/^[|,:;\-–—\s.]+|[|,:;\-–—\s.]+$/g, '')
     .trim();
   return { explicitTime, timeBucket, cleanedText: working, extraNote };
 }
@@ -369,16 +478,106 @@ interface RawLineRule {
   parenBody: string;
 }
 
-const BULLET_PREFIX_RE =
-  /^[\s\t]*[#●○■□◆◇▪▫▶➔•*\-–—~_+|📍✈️🏨🍽️🏛️🎟️🎒📌🗺️⭐✨]+\s*/u;
+export function sanitizeInputText(text: string): string {
+  if (!text) return '';
+  // 1. Remove zero-width & invisible formatting characters:
+  let cleaned = text.replace(INVISIBLE_CHARS_RE, '');
+
+  // 2. Convert non-breaking spaces to standard space
+  cleaned = cleaned.replace(/[\u00A0\u202F\u2007]/g, ' ');
+
+  // 3. Normalize Unicode line breaks to \n
+  cleaned = cleaned.replace(/\r\n|\r|\u2028|\u2029/g, '\n');
+
+  // 4. Flattened line recovery before stage or day headers
+  cleaned = cleaned.replace(/(.)(?=(?:TAPPA|FASE|STAGE|LEG)\s+\d+[:\-–—])/gi, '$1\n');
+  cleaned = cleaned.replace(
+    /(.)(?=\b\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s*(?:\([^)]+\))?\s*(?:-|–|—)\s*(?:giorno|day|g)\s*\d+[:\-–—]?)/gi,
+    '$1\n'
+  );
+
+  return cleaned;
+}
+
+export interface ProgramHeaderResult {
+  suggestedTitle: string;
+  startDay?: number;
+  startMonth?: number;
+  endDay?: number;
+  endMonth?: number;
+  year?: number;
+}
+
+export function parseProgramHeader(line: string): ProgramHeaderResult | null {
+  const cleaned = cleanBulletPrefix(line);
+  if (!cleaned) return null;
+
+  const headerMatch = cleaned.match(
+    /^(?:#+\s*)?(?:programma(?:\s+definitivo)?|itinerario(?:\s+definitivo)?|piano\s+(?:di\s+)?viaggio|proposta\s+viaggio)\s*[:\-–—]\s*(.+)$/i
+  );
+  if (!headerMatch) return null;
+
+  const rawTitle = headerMatch[1].trim();
+  const monthNamesPattern = Object.keys(MONTH_NAMES).join('|');
+
+  const wordRangeInParens = new RegExp(
+    `\\((?:dal\\s+)?(\\d{1,2})\\s+(${monthNamesPattern})\\s*(?:-|–|—|\\s+al?\\s+)\\s*(\\d{1,2})\\s+(${monthNamesPattern})(?:\\s+(\\d{4}))?\\)`,
+    'i'
+  );
+  const wm = rawTitle.match(wordRangeInParens);
+  if (wm) {
+    const sd = Number(wm[1]);
+    const sm = MONTH_NAMES[wm[2].toLowerCase()];
+    const ed = Number(wm[3]);
+    const em = MONTH_NAMES[wm[4].toLowerCase()];
+    const y = wm[5] ? Number(wm[5]) : undefined;
+    const cleanTitle = rawTitle.replace(wordRangeInParens, '').trim().replace(/^[:\-–—\s]+|[:\-–—\s]+$/g, '');
+    return {
+      suggestedTitle: cleanTitle || rawTitle,
+      startDay: sd,
+      startMonth: sm,
+      endDay: ed,
+      endMonth: em,
+      year: y
+    };
+  }
+
+  const numRangeInParens =
+    /\((?:dal\s+)?(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\s*(?:-|–|—|\s+al?\\s+)\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\)/i;
+  const nm = rawTitle.match(numRangeInParens);
+  if (nm) {
+    const sd = Number(nm[1]);
+    const sm = Number(nm[2]);
+    const ed = Number(nm[4]);
+    const em = Number(nm[5]);
+    const y = nm[6] ? (nm[6].length === 2 ? 2000 + Number(nm[6]) : Number(nm[6])) : undefined;
+    const cleanTitle = rawTitle.replace(numRangeInParens, '').trim().replace(/^[:\-–—\s]+|[:\-–—\s]+$/g, '');
+    return {
+      suggestedTitle: cleanTitle || rawTitle,
+      startDay: sd,
+      startMonth: sm,
+      endDay: ed,
+      endMonth: em,
+      year: y
+    };
+  }
+
+  return { suggestedTitle: rawTitle };
+}
 
 const DAY_OF_WEEK_PAT =
-  '(?:\\(?(?:dom(?:enica)?|lun(?:ed[ìi])?|mar(?:ted[ìi])?|mer(?:coled[ìi])?|gio(?:ved[ìi])?|ven(?:erd[ìi])?|sab(?:ato)?|sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)\\.?[)\\s]*)';
+  '(?:\\((?:dom(?:enica)?|lun(?:ed[ìi])?|mar(?:ted[ìi])?|mer(?:coled[ìi])?|gio(?:ved[ìi])?|ven(?:erd[ìi])?|sab(?:ato)?|sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)[^)]*\\)|\\b(?:dom(?:enica)?|lun(?:ed[ìi])?|mar(?:ted[ìi])?|mer(?:coled[ìi])?|gio(?:ved[ìi])?|ven(?:erd[ìi])?|sab(?:ato)?|sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)\\.?)';
 
 export function cleanBulletPrefix(line: string): string {
-  let cleaned = line.replace(BULLET_PREFIX_RE, '').trim();
+  let cleaned = line.replace(INVISIBLE_CHARS_RE, '').trim();
+  cleaned = cleaned.replace(/^>+\s*/, '');
+  cleaned = cleaned.replace(
+    /^[\s\t]*[#●○■□◆◇▪▫▶➔•*\-–—~_+|>\u2022\u25E6\u25AA\u25AB\u25CF\u25CB\u25B6\u25B8\u25BA\u25BB]+[\s\t]*/u,
+    ''
+  );
+  cleaned = cleaned.replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\s]+/u, '');
   cleaned = cleaned.replace(/^[\s\t]*\d+[\.\)][\s\t]*/, '').trim();
-  cleaned = cleaned.replace(/^\*\*|\*\*$/g, '').trim();
+  cleaned = cleaned.replace(/^\*\*|^\*|^__|^\b_|\*\*$/g, '').trim();
   cleaned = cleaned.replace(/^(?:in\s+data\s+|il\s+giorno\s+|il\s+di\s+|il\s+)/i, '').trim();
   return cleaned;
 }
@@ -400,10 +599,13 @@ function parseLeadingDateSpec(line: string): LeadingDateResult | null {
   const stageMatch = cleaned.match(/^(?:tappa|fase|stage|leg|parte)\s*(\d+)?\s*[:\-–—]\s*(.+)$/i);
   if (stageMatch) {
     const rawStageText = stageMatch[2].trim();
-    // Inferred city from stage text
-    const matchedCity = lookupCityInfo(rawStageText) ||
+    const baseStageName = rawStageText.replace(/\([^)]*\)/g, '').trim();
+    const primaryPart = baseStageName.split(/\s*(?:&|\/|\+|\be\b)\s*/)[0].trim();
+    const matchedCity =
+      lookupCityInfo(primaryPart) ||
+      lookupCityInfo(baseStageName) ||
       Object.values(CITY_CATALOG).find((ci) =>
-        rawStageText.toLowerCase().includes(ci.canonical.toLowerCase())
+        baseStageName.toLowerCase().includes(ci.canonical.toLowerCase())
       );
     return {
       kind: 'stage',
@@ -674,10 +876,27 @@ function buildActivityFromDescription(
   }
 ): Activity {
   const { explicitTime, timeBucket, cleanedText, extraNote } = extractTimeAndCleanText(rawDesc);
-  const cleanLabel = cleanedText.replace(/^(?:vedere|visitare|inserire|fare)\s+/i, '').trim();
+  const strippedPrefix = cleanedText
+    .replace(/^[|:\-–—\s]+|[|:\-–—\s]+$/g, '')
+    .replace(/^(?:vedere|visitare|inserire|fare)\s+/i, '')
+    .trim();
 
-  const known = lookupKnownPlace(cleanLabel, baseCity);
+  let candidateTitle = strippedPrefix;
+  let candidateDesc: string | undefined = options?.extraNotes || extraNote;
+
+  const colonMatch = strippedPrefix.match(/^([^:]{2,60})\s*:\s*(.+)$/);
+  if (colonMatch && !/^(?:opzione\s+[A-Z]|nota\b)/i.test(strippedPrefix)) {
+    candidateTitle = colonMatch[1].trim();
+    const rightDesc = colonMatch[2].trim();
+    candidateDesc = candidateDesc ? `${candidateDesc} — ${rightDesc}` : rightDesc;
+  }
+
+  const cleanLabel = candidateTitle;
   const cityInfo = lookupCityInfo(baseCity);
+  const placeContext = { baseCity, countryPresetId: cityInfo?.countryPresetId };
+  const known =
+    lookupKnownPlace(candidateTitle, placeContext) ||
+    lookupKnownPlace(strippedPrefix, placeContext);
 
   let defaultTime = known?.defaultTime || '10:00';
   if (timeBucket === 'early_morning') defaultTime = '07:30';
@@ -696,7 +915,7 @@ function buildActivityFromDescription(
     const optLetter = optMatch[1];
     const optTag = optMatch[2] ? `[Opzione ${optLetter} — ${optMatch[2]}]` : `[Opzione ${optLetter}]`;
     const optBody = optMatch[3].trim();
-    const optKnown = lookupKnownPlace(optBody);
+    const optKnown = lookupKnownPlace(optBody, placeContext);
     return {
       id: makeId('act'),
       time: options?.overrideTime || explicitTime || (optLetter === 'A' ? '14:30' : '16:30'),
@@ -740,7 +959,7 @@ function buildActivityFromDescription(
   if (/^(?:check-in|sistemazione(?:\s+in\s+alloggio|\s+in\s+hotel|\s+in\s+riad)?)\b/i.test(cleanLabel)) {
     const locMatch = cleanLabel.match(/^(?:check-in|sistemazione)\s+(?:in\s+alloggio|in\s+hotel|in\s+riad|all['’]hotel|al\s+resort)?\s*(?:a|in)\s+(.+)$/i);
     const targetPlace = locMatch ? locMatch[1].trim() : '';
-    const placeKnown = targetPlace ? lookupKnownPlace(targetPlace, baseCity) : undefined;
+    const placeKnown = targetPlace ? lookupKnownPlace(targetPlace, placeContext) : undefined;
     const placeCity = targetPlace ? lookupCityInfo(targetPlace) : undefined;
 
     return {
@@ -755,7 +974,7 @@ function buildActivityFromDescription(
       lat: placeKnown?.lat ?? placeCity?.lat,
       lng: placeKnown?.lng ?? placeCity?.lng,
       category: 'lodging',
-      notes: extraNote || 'Posare i bagagli e rinfrescarsi prima delle visite.',
+      notes: candidateDesc || 'Posare i bagagli e rinfrescarsi prima delle visite.',
       completed: false
     };
   }
@@ -773,7 +992,7 @@ function buildActivityFromDescription(
         lat: known.lat,
         lng: known.lng,
         category: 'transport',
-        notes: extraNote || known.notes || 'Arrivo a destinazione e sistemazione.',
+        notes: [candidateDesc, known.notes].filter(Boolean).join(' ') || 'Arrivo a destinazione e sistemazione.',
         completed: false
       };
     }
@@ -796,7 +1015,7 @@ function buildActivityFromDescription(
       lat: cityInText?.lat,
       lng: cityInText?.lng,
       category: 'transport',
-      notes: extraNote || 'Arrivo, ritiro bagagli/pass trasporti e check-in in alloggio.',
+      notes: candidateDesc || 'Arrivo, ritiro bagagli/pass trasporti e check-in in alloggio.',
       completed: false
     };
   }
@@ -820,7 +1039,7 @@ function buildActivityFromDescription(
       lat: isOsaka ? 34.432 : originCity?.lat,
       lng: isOsaka ? 135.2304 : originCity?.lng,
       category: 'transport',
-      notes: 'Raggiungere il terminal con congruo anticipo per controlli e imbarco.',
+      notes: candidateDesc || 'Raggiungere il terminal con congruo anticipo per controlli e imbarco.',
       completed: false
     };
   }
@@ -870,8 +1089,16 @@ function buildActivityFromDescription(
 
     const toCity = lookupCityInfo(rawTo);
     const fromCity = rawFrom ? lookupCityInfo(rawFrom) : undefined;
-    const toKnown = lookupKnownPlace(rawTo, baseCity);
-    const fromKnown = rawFrom ? lookupKnownPlace(rawFrom, baseCity) : undefined;
+    const toKnown = lookupKnownPlace(rawTo, {
+      baseCity: toCity?.canonical || baseCity,
+      countryPresetId: toCity?.countryPresetId || cityInfo?.countryPresetId
+    });
+    const fromKnown = rawFrom
+      ? lookupKnownPlace(rawFrom, {
+          baseCity: fromCity?.canonical || baseCity,
+          countryPresetId: fromCity?.countryPresetId || cityInfo?.countryPresetId
+        })
+      : undefined;
 
     const destLabel = toKnown?.canonicalName || toCity?.canonical || (rawTo ? smartTitleCase(rawTo) : 'Destinazione');
     const fromLabel =
@@ -915,7 +1142,7 @@ function buildActivityFromDescription(
       ? (fromKnown?.lng ?? fromCity?.stationOrAirportLng ?? fromCity?.lng)
       : (toKnown?.lng ?? toCity?.stationOrAirportLng ?? toCity?.lng);
 
-    const mergedNotes = [options?.extraNotes, extraNote, routeNote].filter(Boolean).join(' ');
+    const mergedNotes = [candidateDesc, routeNote].filter(Boolean).join(' ');
 
     return {
       id: makeId('act'),
@@ -948,7 +1175,7 @@ function buildActivityFromDescription(
         cleanLabel
       );
 
-    const mergedNotes = [options?.extraNotes, extraNote, known.notes].filter(Boolean).join(' ');
+    const mergedNotes = [candidateDesc, known.notes].filter(Boolean).join(' ');
     return {
       id: makeId('act'),
       time: finalTime,
@@ -979,7 +1206,7 @@ function buildActivityFromDescription(
           lat: firstSuggestion.lat,
           lng: firstSuggestion.lng,
           category: firstSuggestion.category,
-          notes: [options?.extraNotes, extraNote, firstSuggestion.notes].filter(Boolean).join(' ') || undefined,
+          notes: [candidateDesc, firstSuggestion.notes].filter(Boolean).join(' ') || undefined,
           completed: false
         };
       }
@@ -998,11 +1225,12 @@ function buildActivityFromDescription(
       lat: standaloneCity.lat,
       lng: standaloneCity.lng,
       category: 'sightseeing',
+      notes: candidateDesc || undefined,
       completed: false
     };
   }
 
-  const displayTitle = smartTitleCase(cleanLabel || rawDesc);
+  const displayTitle = smartTitleCase(candidateTitle || rawDesc);
   const locationContext =
     cityInfo && !displayTitle.toLowerCase().includes(cityInfo.canonical.toLowerCase())
       ? `${displayTitle}, ${cityInfo.canonical}`
@@ -1013,23 +1241,50 @@ function buildActivityFromDescription(
     time: finalTime,
     title: displayTitle,
     locationName: locationContext,
-    category: options?.overrideCategory || inferCategory(cleanLabel),
-    notes: [options?.extraNotes, extraNote].filter(Boolean).join(' ') || undefined,
+    category: options?.overrideCategory || inferCategory(candidateTitle),
+    notes: candidateDesc || undefined,
     completed: false
   };
+}
+
+function splitIgnoringParentheses(text: string, sep: RegExp): string[] {
+  const result: string[] = [];
+  let depth = 0;
+  let lastIndex = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++;
+    } else if (ch === ')' || ch === ']' || ch === '}') {
+      if (depth > 0) depth--;
+    } else if (depth === 0) {
+      const sub = text.slice(i);
+      const m = sub.match(sep);
+      if (m && m.index === 0) {
+        result.push(text.slice(lastIndex, i).trim());
+        i += m[0].length - 1;
+        lastIndex = i + 1;
+      }
+    }
+  }
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex).trim());
+  }
+  return result.filter(Boolean);
 }
 
 /**
  * Intelligently segments a descriptive line into sequential travel activities.
  * Handles:
  * 1. Time-of-day blocks ("Mattina: ... Pomeriggio: ... Sera: ...")
- * 2. Sentences (". " followed by capital letters or verbs)
- * 3. Semicolons ("; ")
- * 4. Chain tokens ("e poi", "poi", "->", "+")
+ * 2. Structured lines ("<Time/Range> | <Title>: <Description>")
+ * 3. Sentences (". " followed by capital letters or verbs)
+ * 4. Semicolons ("; ")
  * 5. Distinct known POIs separated by commas or conjunctions ("Colosseo, Trevi, Pantheon")
  */
 function segmentLineIntoActivities(rawText: string, baseCity: string): Activity[] {
-  const trimmed = rawText.trim();
+  const trimmed = rawText.replace(INVISIBLE_CHARS_RE, '').trim();
   if (!trimmed) return [];
 
   // Special pattern: "partenza da X per Y"
@@ -1053,6 +1308,56 @@ function segmentLineIntoActivities(rawText: string, baseCity: string): Activity[
       subsequentActivities[0].time = '10:15';
     }
     return [act1, ...subsequentActivities];
+  }
+
+  // Structured pipe pattern: "<TimeOrBucket> | <Title>: <Description>" OR "<TimeOrBucket> | <Title>"
+  if (trimmed.includes('|')) {
+    const pipeIdx = trimmed.indexOf('|');
+    const leftTime = trimmed.slice(0, pipeIdx).trim();
+    const rightContent = trimmed.slice(pipeIdx + 1).trim();
+    const timeInfo = extractTimeAndCleanText(leftTime);
+
+    // Check if rightContent has a Title : Description structure
+    const colonMatch = rightContent.match(/^([^:]{2,60})\s*:\s*(.+)$/);
+    if (colonMatch) {
+      const rawTitle = colonMatch[1].trim();
+      const rawDesc = colonMatch[2].trim();
+
+      // Check if rawTitle joins two distinct known POIs e.g. "Tempio Kodai-ji e Santuario Yasaka" or "Ueno e Asakusa"
+      const andParts = rawTitle.split(/\s+(?:e|ed|and|&|\+)\s+/i).map((s) => s.trim()).filter(Boolean);
+      if (andParts.length === 2) {
+        const p1 = lookupKnownPlace(andParts[0], { baseCity });
+        const p2 = lookupKnownPlace(andParts[1], { baseCity });
+        if (p1 && p2) {
+          const startTime = timeInfo.explicitTime || (timeInfo.timeBucket === 'afternoon' ? '14:30' : '10:00');
+          const [sh, sm] = startTime.split(':').map(Number);
+          const secondMins = Math.min(sh * 60 + sm + 75, 21 * 60);
+          const secondTime = `${String(Math.floor(secondMins / 60)).padStart(2, '0')}:${String(secondMins % 60).padStart(2, '0')}`;
+
+          const act1 = buildActivityFromDescription(andParts[0], baseCity, {
+            overrideTime: startTime,
+            extraNotes: [timeInfo.extraNote, rawDesc].filter(Boolean).join(' ') || undefined
+          });
+          const act2 = buildActivityFromDescription(andParts[1], baseCity, {
+            overrideTime: secondTime,
+            extraNotes: [timeInfo.extraNote, rawDesc].filter(Boolean).join(' ') || undefined
+          });
+          return [act1, act2];
+        }
+      }
+
+      const act = buildActivityFromDescription(rawTitle, baseCity, {
+        overrideTime: timeInfo.explicitTime,
+        extraNotes: [timeInfo.extraNote, rawDesc].filter(Boolean).join(' ') || undefined
+      });
+      return [act];
+    } else {
+      const act = buildActivityFromDescription(rightContent, baseCity, {
+        overrideTime: timeInfo.explicitTime,
+        extraNotes: timeInfo.extraNote
+      });
+      return [act];
+    }
   }
 
   // 1. Check for time-of-day sections:
@@ -1090,13 +1395,11 @@ function segmentPhrases(blockText: string, baseCity: string, inheritedTimeHeader
   const activities: Activity[] = [];
 
   for (const part of rawParts) {
-    // Split sentences inside part: ". " followed by capital letter or keyword
-    const sentences = part
-      .split(
-        /\.\s+(?=[A-ZÀ-Ú0-9]|Mattina|Pomeriggio|Sera|Notte|Poi|Per\s+|Check-in|Volo|Treno|Ritiro|Bagno|Salita|Visita|Passeggiata|Escursione|Piazza|Santuario|Tempio|Castello|Parco|Museo|Crociera|Teatro)/
-      )
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // Split sentences inside part: ". " followed by capital letter or keyword, ignoring parenthetical periods
+    const sentences = splitIgnoringParentheses(
+      part,
+      /\.\s+(?=[A-ZÀ-Ú0-9]|Mattina|Pomeriggio|Sera|Notte|Poi|Per\s+|Check-in|Volo|Treno|Ritiro|Bagno|Salita|Visita|Passeggiata|Escursione|Piazza|Santuario|Tempio|Castello|Parco|Museo|Crociera|Teatro)/
+    );
 
     for (const sent of sentences) {
       // Handle change of mind / plan correction within a sentence: e.g. "panino veloce..., anzi no facciamo una sosta con degustazione..."
@@ -1405,7 +1708,8 @@ export function parseNaturalLanguageItinerary(
   const now = new Date();
   const baseDefaultYear = options?.referenceYear ?? now.getFullYear();
 
-  const rawLines = rawText
+  const sanitized = sanitizeInputText(rawText);
+  const rawLines = sanitized
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
@@ -1423,11 +1727,25 @@ export function parseNaturalLanguageItinerary(
   let unassignedNotes: string[] = [];
   let currentStageCity = '';
   let currentDayNode: DayNode | null = null;
+  let programHeaderInfo: ProgramHeaderResult | null = null;
 
   for (const line of rawLines) {
+    if (/^(?:ciao\b|buongiorno\b|ecco\s+(?:la\s+nostra\s+|il\s+nostro\s+)?bozza|bozza\b|note\s+di\s+viaggio)/i.test(line)) {
+      continue;
+    }
+
+    const header = parseProgramHeader(line);
+    if (header) {
+      if (!programHeaderInfo) {
+        programHeaderInfo = header;
+      }
+      continue;
+    }
+
     const match = parseLeadingDateSpec(line);
     if (match?.kind === 'stage') {
       currentStageCity = match.stageCity || '';
+      currentDayNode = null;
       continue;
     }
 
@@ -1443,13 +1761,21 @@ export function parseNaturalLanguageItinerary(
         currentDayNode = null;
       } else {
         // Single day or numbered day e.g. "22 Nov (Dom) – Giorno 1: Arrivo a Tokyo" or "- 22/11: arrivo a tokyo..."
+        const formattedDayTitle = match.dayNumber && match.rest
+          ? (/^giorno\s*\d+/i.test(match.rest) ? match.rest : `Giorno ${match.dayNumber}: ${smartTitleCase(match.rest)}`)
+          : (match.rest.trim() || undefined);
+
         currentDayNode = {
           spec: match.spec,
           dayNumber: match.dayNumber,
           stageCity: currentStageCity,
-          dayTitle: match.rest.trim() || undefined,
+          dayTitle: formattedDayTitle,
           childLines: []
         };
+        if (currentStageCity && unassignedNotes.length > 0) {
+          currentDayNode.childLines.unshift(...unassignedNotes);
+          unassignedNotes = [];
+        }
         dayNodes.push(currentDayNode);
       }
     } else {
@@ -1649,7 +1975,7 @@ export function parseNaturalLanguageItinerary(
       } else {
         bucket.dayTitleOverride = dn.dayTitle;
         // If dayTitle was an arrival and childLines do not mention arrival/atterraggio, generate arrival
-        if (/^arrivo\b/i.test(dn.dayTitle) && !dn.childLines.some((c) => /atterraggio|arrivo/i.test(c))) {
+        if (/\barrivo\b/i.test(dn.dayTitle) && !dn.childLines.some((c) => /atterraggio|arrivo/i.test(c))) {
           bucket.activities.push(buildActivityFromDescription(dn.dayTitle, bucket.baseCity));
         }
       }
@@ -1663,6 +1989,18 @@ export function parseNaturalLanguageItinerary(
       if (/^pomeriggio\s*\(?scegliere\s+tra\s+opzione/i.test(clean)) {
         continue;
       }
+
+      const isContinuation =
+        /^(?:se\s+il\s+giorno\s+\d+|se\s+la\s+giornata|con\s+il\s+kimono|senza\s+kimono|quale\s+sede|cosa\s+assaggiare|cosa\s+mangiare|consigli?\s+(?:gastronomic[oi]|util[ei])|bus\s+espresso|da\s+mishima|da\s+l[ìi]|da\s+qui|check-in\s+in\s+hotel)/i.test(
+          clean
+        );
+
+      if (isContinuation && bucket.activities.length > 0) {
+        const lastAct = bucket.activities[bucket.activities.length - 1];
+        lastAct.notes = [lastAct.notes, clean].filter(Boolean).join('\n');
+        continue;
+      }
+
       const generated = segmentLineIntoActivities(clean, bucket.baseCity);
       bucket.activities.push(...generated);
     }
@@ -2118,11 +2456,12 @@ export function parseNaturalLanguageItinerary(
       ? distinctCityNames.slice(0, 4).join(', ')
       : detectedDestination;
   const suggestedTitle =
-    primaryCountry && distinctCityNames.length >= 2
+    programHeaderInfo?.suggestedTitle ||
+    (primaryCountry && distinctCityNames.length >= 2
       ? `${primaryCountry.countryName}: ${citySummary}`
       : distinctCityNames.length >= 1
         ? `Viaggio: ${citySummary}`
-        : `Viaggio in ${detectedDestination}`;
+        : `Viaggio in ${detectedDestination}`);
 
   const totalActivities = finalDays.reduce((acc, d) => acc + d.activities.length, 0);
   const geocodedCount = finalDays.reduce(

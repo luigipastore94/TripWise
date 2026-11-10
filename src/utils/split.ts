@@ -37,19 +37,22 @@ export function calculateTripBalances(
     totalSpentInBase += amount;
 
     const payer = map.get(exp.paidByMemberId);
-    if (payer) {
-      payer.paidInBase += amount;
+    if (!payer) {
+      continue;
     }
 
-    const validParticipants =
+    const filteredParticipants =
       exp.splitBetweenMemberIds && exp.splitBetweenMemberIds.length > 0
         ? exp.splitBetweenMemberIds.filter((id) => map.has(id))
-        : members.map((m) => m.id);
+        : [];
 
-    const count = validParticipants.length || members.length;
-    if (count > 0) {
-      const share = amount / count;
-      for (const pid of validParticipants) {
+    const effectiveParticipants =
+      filteredParticipants.length > 0 ? filteredParticipants : members.map((m) => m.id);
+
+    if (effectiveParticipants.length > 0) {
+      payer.paidInBase += amount;
+      const share = amount / effectiveParticipants.length;
+      for (const pid of effectiveParticipants) {
         const participant = map.get(pid);
         if (participant) {
           participant.owedInBase += share;

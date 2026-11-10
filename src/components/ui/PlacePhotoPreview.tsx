@@ -47,8 +47,8 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
   refreshing = false
 }) => {
   const [activeLightboxIndex, setActiveLightboxIndex] = useState<number | null>(null);
-  const [loadedImages, setLoadedImages] = useState<Record<number, boolean>>({});
-  const [errorImages, setErrorImages] = useState<Record<number, boolean>>({});
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const [errorImages, setErrorImages] = useState<Record<string, boolean>>({});
 
   const [internalPhotos, setInternalPhotos] = useState<string[]>(photos);
   const [internalRating, setInternalRating] = useState<number | undefined>(rating);
@@ -57,17 +57,22 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
   const autoFetchTriggeredRef = useRef(false);
 
   useEffect(() => {
+    setInternalPhotos(photos ?? []);
     if (photos && photos.length > 0) {
-      setInternalPhotos(photos);
+      setErrorImages({});
     }
   }, [photos]);
 
   useEffect(() => {
-    if (typeof rating === 'number') setInternalRating(rating);
+    autoFetchTriggeredRef.current = false;
+  }, [autoFetchQuery, placeId]);
+
+  useEffect(() => {
+    setInternalRating(typeof rating === 'number' ? rating : undefined);
   }, [rating]);
 
   useEffect(() => {
-    if (typeof userRatingCount === 'number') setInternalCount(userRatingCount);
+    setInternalCount(typeof userRatingCount === 'number' ? userRatingCount : undefined);
   }, [userRatingCount]);
 
   // Auto-fetch photos on-demand for existing unhydrated places (Tesler's Law)
@@ -105,7 +110,7 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
       });
   }, [autoFetchQuery, biasCenter, placeId, internalPhotos.length, onPhotosResolved]);
 
-  const validPhotos = internalPhotos.filter((url, idx) => !errorImages[idx] && Boolean(url));
+  const validPhotos = internalPhotos.filter((url) => Boolean(url) && !errorImages[url]);
   const photoCount = validPhotos.length;
   const isBusy = loading || isLoading || refreshing || isAutoFetching;
 
@@ -198,7 +203,7 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
             title={`Guarda foto di ${placeName} (${photoCount} foto)`}
             className="group relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800 shrink-0 shadow-xs focus:outline-hidden focus:ring-2 focus:ring-brand-500 block text-left transition-transform active:scale-95"
           >
-            {!loadedImages[0] && (
+            {!loadedImages[validPhotos[0]] && (
               <div className="absolute inset-0 bg-slate-200 dark:bg-slate-800 animate-pulse" />
             )}
             <img
@@ -206,10 +211,10 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
               alt={`${placeName} - foto principale`}
               loading="lazy"
               decoding="async"
-              onLoad={() => setLoadedImages((prev) => ({ ...prev, [0]: true }))}
-              onError={() => setErrorImages((prev) => ({ ...prev, [0]: true }))}
+              onLoad={() => setLoadedImages((prev) => ({ ...prev, [validPhotos[0]]: true }))}
+              onError={() => setErrorImages((prev) => ({ ...prev, [validPhotos[0]]: true }))}
               className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-                loadedImages[0] ? 'opacity-100' : 'opacity-0'
+                loadedImages[validPhotos[0]] ? 'opacity-100' : 'opacity-0'
               }`}
             />
             <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/25 transition-colors flex items-center justify-center pointer-events-none">
@@ -283,7 +288,7 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
             }`}
           >
             {validPhotos.slice(0, 3).map((photoUrl, idx) => {
-              const isLoaded = loadedImages[idx];
+              const isLoaded = loadedImages[photoUrl];
               const isThirdAndMore = idx === 2 && photoCount > 3;
               return (
                 <button
@@ -309,8 +314,8 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
                     alt={`${placeName} - foto ${idx + 1}`}
                     loading="lazy"
                     decoding="async"
-                    onLoad={() => setLoadedImages((prev) => ({ ...prev, [idx]: true }))}
-                    onError={() => setErrorImages((prev) => ({ ...prev, [idx]: true }))}
+                    onLoad={() => setLoadedImages((prev) => ({ ...prev, [photoUrl]: true }))}
+                    onError={() => setErrorImages((prev) => ({ ...prev, [photoUrl]: true }))}
                     className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
                       isLoaded ? 'opacity-100' : 'opacity-0'
                     }`}
@@ -341,6 +346,7 @@ export const PlacePhotoPreview: React.FC<PlacePhotoPreviewProps> = ({
         <div
           role="dialog"
           aria-modal="true"
+          data-photo-lightbox="true"
           aria-label={`Foto ${activeLightboxIndex + 1} di ${photoCount} - ${placeName}`}
           className="fixed inset-0 z-[99999] flex flex-col items-center justify-between p-3 sm:p-6 bg-black/95 backdrop-blur-md animate-in fade-in duration-200 select-none overflow-hidden"
           onClick={() => setActiveLightboxIndex(null)}

@@ -13,7 +13,11 @@ description: >-
 End users of TripWise must NEVER paste `firebaseConfig` or visit developer consoles. All Firebase credentials live in `.env` (`VITE_FIREBASE_*`) generated automatically via CLI.
 
 ## Single-Command Automated Setup
-Run the unified provisioning script to verify the active Google account, select the Firebase project, populate `.env` + `android/app/google-services.json`, and deploy Google Sign-In Auth + Firestore rules/indexes:
+Run the provisioning script to verify the active Google account, select the Firebase project, populate `.env` + `android/app/google-services.json`, and deploy Google Sign-In Auth + Firestore rules/indexes:
+```bash
+npm run cloud:provision
+```
+To build, deploy Hosting/Firestore rules immediately, and sync GitHub Actions deploy secrets (`FIREBASE_SERVICE_ACCOUNT`, `FIREBASE_TOKEN`, `VITE_*`):
 ```bash
 npm run cloud:setup
 ```

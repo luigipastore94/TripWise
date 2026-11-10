@@ -556,18 +556,17 @@ export async function pushTripToCloud(
         }
         return {
           ...b,
-          hasPdf: Boolean(b.hasPdf || b.pdfDataUrl || b.pdfFileName)
+          hasPdf: b.hasPdf === false ? false : Boolean(b.hasPdf || b.pdfDataUrl || b.pdfFileName)
         };
       })
     };
   }
 
   // 2. Protect against oversized coverImage strings exceeding Firestore security rule limit (400,000 chars)
+  // Never slice base64 strings mid-stream as that corrupts JPEG decoding; omit oversized raw strings instead.
   if (cleanPayload.coverImage && cleanPayload.coverImage.length > 390_000) {
-    cleanPayload = {
-      ...cleanPayload,
-      coverImage: cleanPayload.coverImage.slice(0, 390_000)
-    };
+    const { coverImage: _oversized, ...restPayload } = cleanPayload;
+    cleanPayload = restPayload as TripData;
   }
 
   const finalPayload: Record<string, unknown> = { ...cleanPayload };
@@ -775,9 +774,16 @@ export async function deleteCloudTrip(trip: TripData, user: UserProfile): Promis
   }
 
   // 3. If shared with companions, disassociate this user so other companions retain the trip
-  const remainingMembers = currentMembers.filter(
-    (m) => m.uid !== user.uid && m.name !== user.displayName
-  );
+  const hasUidMatch = currentMembers.some((m) => m.uid === user.uid);
+  let removedFallback = false;
+  const remainingMembers = currentMembers.filter((m) => {
+    if (m.uid === user.uid) return false;
+    if (!hasUidMatch && !removedFallback && !m.uid && user.displayName && m.name === user.displayName) {
+      removedFallback = true;
+      return false;
+    }
+    return true;
+  });
 
   try {
     await updateDoc(ref, {

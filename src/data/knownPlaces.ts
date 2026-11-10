@@ -9,6 +9,8 @@ export interface KnownPlaceEntry {
   defaultCategory?: ActivityCategory;
   defaultTime?: string;
   notes?: string;
+  countryPresetId?: string;
+  city?: string;
 }
 
 /**
@@ -30,6 +32,17 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     notes: 'Museo immersivo digitale a piedi nudi (presentarsi 15 min prima dell’orario prenotato).'
   },
   {
+    keywords: ['kotoku-in', 'kotokuin', 'grande buddha di kamakura', 'grande buddha kamakura', 'daibutsu kamakura', 'grande buddha'],
+    canonicalName: 'Kotoku-in (Grande Buddha di Kamakura)',
+    locationName: 'Kotoku-in, Hase, Kamakura',
+    lat: 35.3168,
+    lng: 139.5357,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kamakura',
+    notes: 'Imponente statua bronzea all’aperto del Grande Buddha di Kamakura risalente al 1252.'
+  },
+  {
     keywords: ['kamakura'],
     canonicalName: 'Escursione a Kamakura (Grande Buddha & Templi)',
     locationName: 'Kotoku-in (Grande Buddha), Kamakura',
@@ -37,16 +50,31 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lng: 139.5357,
     defaultCategory: 'sightseeing',
     defaultTime: '09:00',
+    countryPresetId: 'japan',
+    city: 'Kamakura',
     notes: 'Visitare il Grande Buddha (Kotoku-in), Hasedera e il santuario Tsurugaoka Hachimangu.'
   },
   {
-    keywords: ['meigetsu-in', 'meigetsuin'],
-    canonicalName: 'Tempio Meigetsu-in (Foliage & Finestra Circolare)',
-    locationName: 'Meigetsu-in, Kamakura',
+    keywords: ['meigetsu-in', 'meigetsuin', 'kita-kamakura', 'kita kamakura'],
+    canonicalName: 'Meigetsu-in (Kita-Kamakura)',
+    locationName: 'Meigetsu-in, Yamanouchi, Kamakura',
     lat: 35.3347,
     lng: 139.5539,
     defaultCategory: 'sightseeing',
-    notes: 'Famosa finestra circolare aperta sul giardino posteriore e foliage tardivo.'
+    countryPresetId: 'japan',
+    city: 'Kamakura',
+    notes: 'Famosa finestra circolare aperta sul giardino posteriore e foliage tardivo autunnale.'
+  },
+  {
+    keywords: ['inamuragasaki', 'spiaggia di inamuragasaki', 'costa di shonan', 'shonan'],
+    canonicalName: 'Spiaggia di Inamuragasaki & Costa di Shonan',
+    locationName: 'Inamuragasaki Cape, Kamakura, Kanagawa',
+    lat: 35.3033,
+    lng: 139.5255,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kamakura',
+    notes: 'Passeggiata sulla costa di Shonan con celebre scorcio al tramonto verso l’isola di Enoshima e la sagoma del Fuji.'
   },
   {
     keywords: ['senso-ji', 'sensoji', 'asakusa'],
@@ -108,12 +136,14 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     defaultCategory: 'shopping'
   },
   {
-    keywords: ['tsukiji', 'mercato di tsukiji', 'mercato del pesce di tokyo', 'tsukiji fish market'],
+    keywords: ['tsukiji', 'mercato di tsukiji', 'mercato del pesce di tokyo', 'tsukiji fish market', 'mercato del pesce'],
     canonicalName: 'Mercato Esterno di Tsukiji (Mercato del Pesce)',
     locationName: 'Tsukiji Outer Market, Tokyo',
     lat: 35.6655,
     lng: 139.7707,
-    defaultCategory: 'food'
+    defaultCategory: 'food',
+    countryPresetId: 'japan',
+    city: 'Tokyo'
   },
   {
     keywords: ['ueno', 'parco ueno'],
@@ -129,25 +159,42 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Ginza, Tokyo',
     lat: 35.6717,
     lng: 139.7649,
-    defaultCategory: 'shopping'
+    defaultCategory: 'shopping',
+    countryPresetId: 'japan',
+    city: 'Tokyo'
   },
   {
-    keywords: ['statua della libert', 'lungomare odaiba', 'odaiba'],
-    canonicalName: 'Statua della Libertà & Lungomare di Odaiba',
+    keywords: ['kabuki-za', 'kabukiza', 'teatro kabuki-za', 'teatro kabukiza'],
+    canonicalName: 'Teatro Kabuki-za (Ginza)',
+    locationName: 'Kabukiza Theatre, Ginza, Chuo, Tokyo',
+    lat: 35.6698,
+    lng: 139.7675,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Tokyo',
+    notes: 'Teatro principale di Tokyo per le rappresentazioni tradizionali del Kabuki.'
+  },
+  {
+    keywords: ['statua della liberta di odaiba', 'statua della libertà di odaiba', 'statua della liberta', 'statua della libertà', 'statua della libert', 'lungomare odaiba', 'odaiba'],
+    canonicalName: 'Statua della Libertà di Odaiba & Rainbow Bridge',
     locationName: 'Odaiba Seaside Park, Minato, Tokyo',
     lat: 35.6288,
     lng: 139.7717,
     defaultCategory: 'sightseeing',
-    notes: 'Replica della Statua della Libertà con sfondo sul Rainbow Bridge e skyline.'
+    countryPresetId: 'japan',
+    city: 'Tokyo',
+    notes: 'Replica della Statua della Libertà con sfondo sul Rainbow Bridge e skyline della baia di Tokyo.'
   },
   {
-    keywords: ['rapponigi', 'roppongi', 'viale luci natale', 'keyakizaka'],
-    canonicalName: 'Roppongi Hills & Luminarie Natalizie di Keyakizaka',
-    locationName: 'Roppongi Hills, Minato, Tokyo',
+    keywords: ['keyakizaka dori', 'keyakizaka-dori', 'keyakizaka', 'viale luci natale', 'rapponigi', 'roppongi', 'roppongi hills illuminazioni'],
+    canonicalName: 'Keyakizaka Dori (Roppongi Hills)',
+    locationName: 'Roppongi Keyakizaka Dori, Minato, Tokyo',
     lat: 35.6596,
-    lng: 139.7295,
+    lng: 139.7292,
     defaultCategory: 'sightseeing',
-    notes: 'Viale illuminato a festa con vista suggestiva sulla Tokyo Tower illuminata.'
+    countryPresetId: 'japan',
+    city: 'Tokyo',
+    notes: 'Viale illuminato a festa con celebri luminarie natalizie e vista suggestiva sulla Tokyo Tower illuminata.'
   },
   {
     keywords: ['palazzo imperiale', 'kokyo', 'imperial palace'],
@@ -204,7 +251,31 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lat: 35.5268,
     lng: 138.7615,
     defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Fujikawaguchiko',
     notes: 'Canale fiancheggiato da aceri centenari che in autunno formano un tunnel rosso fuoco.'
+  },
+  {
+    keywords: ['oishi park', 'parco oishi', 'oishi'],
+    canonicalName: 'Oishi Park (Lago Kawaguchiko)',
+    locationName: 'Oishi Park, Fujikawaguchiko, Yamanashi',
+    lat: 35.5233,
+    lng: 138.7461,
+    defaultCategory: 'relax',
+    countryPresetId: 'japan',
+    city: 'Fujikawaguchiko',
+    notes: 'Passeggiata sulle rive del lago con vista spettacolare sul Monte Fuji.'
+  },
+  {
+    keywords: ['houtou fudou', 'hoto fudo', 'hoto fudou', 'fudou kawaguchiko', 'pranzo tipico houtou'],
+    canonicalName: 'Houtou Fudou (Ristorante Tipico Kawaguchiko)',
+    locationName: 'Houtou Fudou, Fujikawaguchiko, Yamanashi',
+    lat: 35.4988,
+    lng: 138.7561,
+    defaultCategory: 'food',
+    countryPresetId: 'japan',
+    city: 'Fujikawaguchiko',
+    notes: 'Famoso locale tipico per assaggiare la zuppa tradizionale di noodles Houtou in ciotola di ferro calda.'
   },
 
   // =========================================================================
@@ -243,7 +314,42 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Tenryu-ji, Arashiyama, Kyoto',
     lat: 35.0158,
     lng: 135.6776,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto'
+  },
+  {
+    keywords: ['togetsukyo', 'ponte togetsukyo', 'togetsu-kyo'],
+    canonicalName: 'Ponte Togetsukyo (Arashiyama)',
+    locationName: 'Togetsukyo Bridge, Arashiyama, Kyoto',
+    lat: 35.0131,
+    lng: 135.6777,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Iconico ponte in legno affacciato sul fiume Oi e sui pendii alberati di Arashiyama.'
+  },
+  {
+    keywords: ['jojakko-ji', 'jojakkoji', 'tempio jojakko-ji', 'tempio jojakkoji'],
+    canonicalName: 'Tempio Jojakko-ji (Foliage Panoramico)',
+    locationName: 'Jojakko-ji, Arashiyama, Kyoto',
+    lat: 35.0194,
+    lng: 135.6698,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Suggestivo tempio sulla collina di Arashiyama con pagoda Tahoto e vista su Kyoto tra gli aceri.'
+  },
+  {
+    keywords: ['okochi sanso', 'villa okochi sanso', 'okochi sanso villa'],
+    canonicalName: 'Villa Okochi Sanso & Giardino Tradizionale',
+    locationName: 'Okochi Sanso Garden, Arashiyama, Kyoto',
+    lat: 35.0177,
+    lng: 135.6706,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Residenza tradizionale dell’attore Denjiro Okochi con magnifico giardino passeggiabile e tè matcha servito nel padiglione.'
   },
   {
     keywords: ['kiyomizu-dera', 'kiyomizudera', 'kiyomizu'],
@@ -252,31 +358,72 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lat: 34.9949,
     lng: 135.785,
     defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
     notes: 'Terrazza panoramica in legno e discesa tra le vie storiche Sannenzaka e Ninenzaka.'
   },
   {
-    keywords: ['kodai-ji', 'kodaiji'],
+    keywords: ['sannenzaka e ninenzaka', 'sannenzaka', 'ninenzaka', 'stradine storiche kyoto'],
+    canonicalName: 'Sannenzaka e Ninenzaka',
+    locationName: 'Sannenzaka & Ninenzaka, Higashiyama, Kyoto',
+    lat: 34.9983,
+    lng: 135.7808,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Caratteristiche vie pedonali storiche lastricate di pietra tra case in legno machiya e botteghe tradizionali.'
+  },
+  {
+    keywords: ['kodai-ji', 'kodaiji', 'tempio kodai-ji', 'tempio kodaiji'],
     canonicalName: 'Tempio Kodai-ji & Boschetto di Bambù',
     locationName: 'Kodai-ji, Higashiyama, Kyoto',
     lat: 35.0003,
     lng: 135.7818,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto'
   },
   {
-    keywords: ['yasaka', 'santuario yasaka'],
+    keywords: ['yasaka', 'santuario yasaka', 'yasaka shrine'],
     canonicalName: 'Santuario Yasaka Jingu',
     locationName: 'Yasaka Shrine, Gion, Kyoto',
     lat: 35.0037,
     lng: 135.7785,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto'
   },
   {
-    keywords: ['maikoya', 'cerimonia del tè', 'cerimonia del te'],
+    keywords: ['gion shirakawa', 'hanamikoji', 'via hanamikoji', 'shirakawa canal'],
+    canonicalName: 'Gion Shirakawa & Via Hanamikoji',
+    locationName: 'Gion Shirakawa, Higashiyama, Kyoto',
+    lat: 35.0049,
+    lng: 135.7745,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Suggestivo canale fiancheggiato da salici e storiche case da tè machiya a Gion.'
+  },
+  {
+    keywords: ['pontocho', 'ponto-cho', 'kamogawa', 'fiume kamo'],
+    canonicalName: 'Pontocho & Fiume Kamogawa',
+    locationName: 'Pontocho Alley, Nakagyo, Kyoto',
+    lat: 35.0062,
+    lng: 135.7712,
+    defaultCategory: 'food',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Stretto vicolo storico illuminato da lanterne, celebre per ristoranti tradizionali affacciati sul fiume Kamogawa.'
+  },
+  {
+    keywords: ['maikoya', 'cerimonia del te maikoya', 'cerimonia del tè maikoya', 'cerimonia del tè', 'cerimonia del te', 'tea ceremony maikoya'],
     canonicalName: 'Cerimonia del tè tradizionale MAIKOYA',
     locationName: 'MAIKOYA Tea Ceremony, Kyoto',
     lat: 35.0061,
     lng: 135.7647,
     defaultCategory: 'relax',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
     notes: 'Esperienza autentica della cerimonia del tè giapponese con preparazione matcha.'
   },
   {
@@ -326,7 +473,31 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Ginkaku-ji, Sakyo, Kyoto',
     lat: 35.0272,
     lng: 135.7982,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto'
+  },
+  {
+    keywords: ['honen-in', 'honenin', 'tempio honen-in', 'tempio honenin'],
+    canonicalName: 'Tempio Honen-in (Sentiero della Filosofia)',
+    locationName: 'Honen-in, Sakyo, Kyoto',
+    lat: 35.0239,
+    lng: 135.7978,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Romantico e tranquillo tempio immerso nella foresta con caratteristico tetto in paglia e monticelli di sabbia sacra.'
+  },
+  {
+    keywords: ['nanzen-ji', 'nanzenji', 'tempio nanzen-ji', 'tempio nanzenji'],
+    canonicalName: 'Tempio Nanzen-ji & Acquedotto Storico',
+    locationName: 'Nanzen-ji, Sakyo, Kyoto',
+    lat: 35.0116,
+    lng: 135.7941,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Kyoto',
+    notes: 'Imponente complesso zen con monumentale porta Sanmon e pittoresco acquedotto romano in mattoni rossi.'
   },
   {
     keywords: ['gion'],
@@ -358,7 +529,31 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Nara Park & Todai-ji, Nara',
     lat: 34.6851,
     lng: 135.843,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Nara'
+  },
+  {
+    keywords: ['kofuku-ji', 'kofukuji', 'tempio kofuku-ji', 'tempio kofukuji'],
+    canonicalName: 'Tempio Kofuku-ji & Pagoda a 5 Piani',
+    locationName: 'Kofuku-ji, Noborioji, Nara',
+    lat: 34.6833,
+    lng: 135.8328,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Nara',
+    notes: 'Celebre tempio storico del clan Fujiwara con imponente pagoda lignea a 5 piani affacciata sul laghetto Sarusawa.'
+  },
+  {
+    keywords: ['kasuga taisha', 'kasugataisha', 'santuario kasuga taisha', 'kasuga-taisha'],
+    canonicalName: 'Santuario Kasuga Taisha (Lanterne di Bronzo)',
+    locationName: 'Kasuga Taisha, Nara',
+    lat: 34.6814,
+    lng: 135.8482,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Nara',
+    notes: 'Antico santuario immerso nella foresta primordiale di Nara, celebre per le centinaia di lanterne di pietra e bronzo.'
   },
 
   // =========================================================================
@@ -378,7 +573,20 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Itsukushima Shrine, Miyajima',
     lat: 34.296,
     lng: 132.3198,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Hiroshima'
+  },
+  {
+    keywords: ['daisho-in', 'daishoin', 'tempio daisho-in', 'tempio daishoin'],
+    canonicalName: 'Tempio Daisho-in (Monte Misen, Miyajima)',
+    locationName: 'Daisho-in, Miyajima, Hatsukaichi',
+    lat: 34.2937,
+    lng: 132.3168,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Hiroshima',
+    notes: 'Principale tempio buddhista Shingon di Miyajima ai piedi del monte Misen con centinaia di statue Jizo e lanterne.'
   },
   {
     keywords: ['castello di himeji', 'himeji castle', 'himeji'],
@@ -386,7 +594,20 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Himeji Castle, Himeji',
     lat: 34.8394,
     lng: 134.6939,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Himeji'
+  },
+  {
+    keywords: ['koko-en', 'kokoen', 'giardino koko-en', 'giardino kokoen'],
+    canonicalName: 'Giardino Koko-en (Himeji)',
+    locationName: 'Koko-en Garden, Himeji',
+    lat: 34.8386,
+    lng: 134.6896,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Himeji',
+    notes: 'Splendido complesso di 9 giardini tradizionali giapponesi in stile periodo Edo adiacente al Castello di Himeji.'
   },
   {
     keywords: ['universal studio', 'universal studios', 'usj'],
@@ -395,7 +616,9 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lat: 34.6654,
     lng: 135.4323,
     defaultCategory: 'sightseeing',
-    defaultTime: '08:30'
+    defaultTime: '08:30',
+    countryPresetId: 'japan',
+    city: 'Osaka'
   },
   {
     keywords: ['dotonbori'],
@@ -403,7 +626,20 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Dotonbori, Namba, Osaka',
     lat: 34.6687,
     lng: 135.5013,
-    defaultCategory: 'food'
+    defaultCategory: 'food',
+    countryPresetId: 'japan',
+    city: 'Osaka'
+  },
+  {
+    keywords: ['shinsekai', 'tsutenkaku', 'torre tsutenkaku', 'tsutenkaku tower'],
+    canonicalName: 'Shinsekai & Torre Tsutenkaku',
+    locationName: 'Shinsekai, Naniwa, Osaka',
+    lat: 34.6525,
+    lng: 135.5063,
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Osaka',
+    notes: 'Pittoresco quartiere retrò di Osaka celebre per lo street food kushikatsu e la storica Torre Tsutenkaku.'
   },
   {
     keywords: ['castello di osaka', 'osaka castle'],
@@ -411,7 +647,9 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'Osaka Castle, Osaka',
     lat: 34.6873,
     lng: 135.5262,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'japan',
+    city: 'Osaka'
   },
   {
     keywords: ['kuromon'],
@@ -862,6 +1100,8 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     lng: 15.0863,
     defaultCategory: 'food',
     defaultTime: '11:00',
+    countryPresetId: 'europe',
+    city: 'Catania',
     notes: 'Folcloristico mercato storico del pesce sotto le mura cinquecentesche.'
   },
   {
@@ -1079,7 +1319,9 @@ export const KNOWN_PLACES_DB: KnownPlaceEntry[] = [
     locationName: 'New York Harbor, New York',
     lat: 40.6892,
     lng: -74.0445,
-    defaultCategory: 'sightseeing'
+    defaultCategory: 'sightseeing',
+    countryPresetId: 'usa',
+    city: 'New York'
   },
   {
     keywords: ['central park'],

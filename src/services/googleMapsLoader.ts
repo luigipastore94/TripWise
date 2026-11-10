@@ -170,8 +170,9 @@ export function loadGoogleMapsSdk(): Promise<GoogleMapsNamespace | null> {
     if (existing) {
       if (window.google?.maps?.Map) {
         finish(window.google.maps);
+        return;
       }
-      return;
+      existing.remove();
     }
 
     const script = document.createElement('script');

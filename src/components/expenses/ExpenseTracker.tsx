@@ -100,8 +100,14 @@ export const ExpenseTracker: React.FC = () => {
     setRawAmount(String(exp.amount));
     setCurrency(exp.currency);
     setCategory(exp.category);
-    setPaidBy(exp.paidByMemberId);
-    setSplitIds(exp.splitBetweenMemberIds.length > 0 ? exp.splitBetweenMemberIds : members.map((m) => m.id));
+    const validPayer = members.some((m) => m.id === exp.paidByMemberId)
+      ? exp.paidByMemberId
+      : (members[0]?.id ?? '');
+    setPaidBy(validPayer);
+    const validSplits = exp.splitBetweenMemberIds.filter((id) =>
+      members.some((m) => m.id === id)
+    );
+    setSplitIds(validSplits.length > 0 ? validSplits : members.map((m) => m.id));
     setDate(exp.date);
     setNotes(exp.notes || '');
     setModalOpen(true);
@@ -335,7 +341,10 @@ export const ExpenseTracker: React.FC = () => {
                       </span>
                       <span>•</span>
                       <span>
-                        Diviso x{exp.splitBetweenMemberIds.length || members.length}
+                        Diviso x
+                        {exp.splitBetweenMemberIds.filter((id) =>
+                          members.some((m) => m.id === id)
+                        ).length || members.length}
                       </span>
                       {exp.date && (
                         <>

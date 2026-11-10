@@ -1,30 +1,23 @@
 import assert from 'node:assert/strict';
 import { runEvaluationHarness } from '../scripts/itinerary-training-loop.mjs';
+import {
+  parseFlexibleAmount,
+  convertToBase,
+  convertFromBase
+} from '../src/utils/currency.ts';
+import {
+  calculateTripBalances
+} from '../src/utils/split.ts';
 
-// 1. Flexible Currency Amount Parser (Postel's Law)
-function parseFlexibleAmount(raw) {
-  if (!raw) return 0;
-  const cleaned = raw.replace(/[^\d.,-]/g, '').trim();
-  if (!cleaned) return 0;
-  const lastComma = cleaned.lastIndexOf(',');
-  const lastDot = cleaned.lastIndexOf('.');
-  let normalized = cleaned;
-  if (lastComma > -1 && lastDot > -1) {
-    normalized =
-      lastComma > lastDot
-        ? cleaned.replace(/\./g, '').replace(',', '.')
-        : cleaned.replace(/,/g, '');
-  } else if (lastComma > -1) {
-    normalized = cleaned.replace(',', '.');
-  }
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
+// 1. Flexible Currency Amount Parser (Postel's Law) — real module import
 assert.equal(parseFlexibleAmount('12,50'), 12.5);
 assert.equal(parseFlexibleAmount('1.250,50 €'), 1250.5);
 assert.equal(parseFlexibleAmount('1,250.50'), 1250.5);
 assert.equal(parseFlexibleAmount('¥3500'), 3500);
+assert.equal(parseFlexibleAmount('1.000.000'), 1000000, 'BUG-14: multiple dots must be parsed as thousands separators');
+assert.equal(parseFlexibleAmount('1,250,000'), 1250000, 'BUG-14: multiple commas must be parsed as thousands separators');
+assert.equal(convertToBase(16250, 'JPY', 'EUR', 162.5), 100);
+assert.equal(convertFromBase(100, 'JPY', 'EUR', 162.5), 16250);
 
 // 2. Trip Date Resizing Logic (preserving existing activities)
 function addDaysIso(isoDate, offsetDays) {
@@ -1979,4 +1972,250 @@ const mergedCol = mergeExpenseCollections(
 assert.equal(mergedCol.length, 1);
 assert.equal(mergedCol[0].amount, 1350, 'Newer subcollection version must win over legacy parent array item');
 
-console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine)');
+// 23. Bug Census Regression Suite (BUG-01, BUG-02, BUG-04)
+
+// 23a. BUG-01: Hydrated local pdfDataUrl on a booking MUST NOT trigger hasLocalChanges=true when remote booking metadata is identical
+const remoteWithBookingNoPdf = {
+  ...baseTripFixture,
+  bookings: [
+    {
+      id: 'bkg_shinkansen',
+      type: 'train',
+      title: 'Shinkansen Tokyo-Kyoto',
+      hasPdf: true,
+      pdfFileName: 'shinkansen.pdf',
+      pdfFileSize: 120000,
+      updatedAt: 5000
+    }
+  ],
+  updatedAt: 5000
+};
+const localWithHydratedPdf = {
+  ...remoteWithBookingNoPdf,
+  bookings: [
+    {
+      ...remoteWithBookingNoPdf.bookings[0],
+      pdfDataUrl: 'data:application/pdf;base64,JVBERi0xLjQK...'
+    }
+  ]
+};
+const bug01Merge = mergeTrips(remoteWithBookingNoPdf, localWithHydratedPdf, remoteWithBookingNoPdf);
+assert.equal(
+  bug01Merge.hasLocalChanges,
+  false,
+  'BUG-01: Local in-memory pdfDataUrl hydration must NOT flag hasLocalChanges=true against an identical remote booking'
+);
+assert.equal(
+  bug01Merge.merged.bookings[0].pdfDataUrl,
+  'data:application/pdf;base64,JVBERi0xLjQK...',
+  'BUG-01: Local pdfDataUrl must still be preserved in the merged booking object'
+);
+
+// 23b. BUG-02: Removing a PDF attachment (hasPdf: false, newer updatedAt) must NOT resurrect local pdfDataUrl
+const remoteRemovedPdf = {
+  ...remoteWithBookingNoPdf,
+  bookings: [
+    {
+      id: 'bkg_shinkansen',
+      type: 'train',
+      title: 'Shinkansen Tokyo-Kyoto',
+      hasPdf: false,
+      updatedAt: 6000
+    }
+  ],
+  updatedAt: 6000
+};
+const bug02Merge = mergeTrips(remoteWithBookingNoPdf, localWithHydratedPdf, remoteRemovedPdf);
+assert.equal(bug02Merge.merged.bookings[0].hasPdf, false, 'BUG-02: Remote PDF removal must win');
+assert.equal(
+  bug02Merge.merged.bookings[0].pdfDataUrl,
+  undefined,
+  'BUG-02: Removed PDF must NOT resurrect stale local pdfDataUrl'
+);
+
+// 23c. BUG-04: calculateTripBalances & calculateSettlements preserve zero-sum invariant even when an expense references a removed member
+const activeMembers = [
+  { id: 'm1', name: 'Alice', color: '#3b82f6' },
+  { id: 'm2', name: 'Marco', color: '#10b981' }
+];
+const expensesWithRemovedMember = [
+  // Split only with removed member m3 -> should fallback to activeMembers so paid == owed
+  {
+    id: 'exp_orphaned_split',
+    title: 'Taxi',
+    amount: 40,
+    currency: 'EUR',
+    amountInBase: 40,
+    paidByMemberId: 'm1',
+    splitBetweenMemberIds: ['m3_removed'],
+    category: 'transport',
+    date: '2026-11-22'
+  },
+  // Paid by removed member m3 -> should be ignored rather than creating negative net balance
+  {
+    id: 'exp_orphaned_payer',
+    title: 'Biglietto',
+    amount: 30,
+    currency: 'EUR',
+    amountInBase: 30,
+    paidByMemberId: 'm3_removed',
+    splitBetweenMemberIds: ['m1', 'm2'],
+    category: 'activities',
+    date: '2026-11-22'
+  }
+];
+const {
+  balances: balancesAfterRemoval,
+  settlements: settlementsAfterRemoval
+} = calculateTripBalances(expensesWithRemovedMember, activeMembers);
+const sumNet = balancesAfterRemoval.reduce((acc, b) => acc + b.netInBase, 0);
+assert.ok(Math.abs(sumNet) < 0.001, 'BUG-04: Sum of net balances across active members must always be 0');
+assert.equal(settlementsAfterRemoval.length, 1);
+assert.equal(settlementsAfterRemoval[0].fromMemberId, 'm2');
+assert.equal(settlementsAfterRemoval[0].toMemberId, 'm1');
+assert.equal(settlementsAfterRemoval[0].amountInBase, 20);
+
+// Regression Test: Zero-width space (\u200B) Japan 15-day outline with pipe syntax, complex dates, and continuation lines
+const zeroWidthJapanItinerary = [
+  'Programma Definitivo: Giappone (22 Nov – 06 Dic)',
+  '\u200BTAPPA 1: Tokyo & Kamakura (5 Notti)',
+  '\u200B22 Nov (Dom) – Giorno 1: Arrivo a Tokyo',
+  '\u200B12:00 | Atterraggio e Check-in: Arrivo a Tokyo Narita o Haneda, ritiro bagagli e trasferimento in hotel a Shinjuku.',
+  '\u200B18:30 | Akihabara Electric Town: Passeggiata serale tra le luci al neon, negozi di elettronica e manga.',
+  '\u200B23 Nov (Lun - Festa Nazionale) – Giorno 2: Da Shinjuku a Shibuya',
+  '\u200B09:00 | Santuario Meiji Jingu: Visita al grande santuario shintoista immerso nella foresta.',
+  '\u200B11:30 | Shinjuku Gyoen: Passeggiata nel grande parco tra splendidi aceri in foliage.',
+  '\u200B15:00 | Shinjuku Centro: Vista sul famoso gatto 3D (Cross Shinjuku Vision, uscita Est) e via commerciale.',
+  '\u200B18:00 | Shibuya Crossing & Hachiko: L’incrocio pedonale più trafficato del mondo e statua di Hachiko.',
+  '\u200B24 Nov (Mar) – Giorno 3: Gita a Kamakura & Costa di Shonan',
+  '\u200B08:30 | Partenza per Kamakura: Treno linea JR Yokosuka dalla stazione di Shinjuku o Tokyo.',
+  '\u200B10:00 | Meigetsu-in (Kita-Kamakura): Famoso tempio zen con la finestra rotonda sul giardino d’autunno.',
+  '\u200B13:30 | Kotoku-in (Grande Buddha di Kamakura): La monumentale statua in bronzo all’aperto.',
+  '\u200B16:00 | Spiaggia di Inamuragasaki: Relax sul litorale di Shonan dove è possibile vedere la sagoma del Monte Fuji stagliarsi sull\'oceano al tramonto.',
+  '\u200B25 Nov (Mer) – Giorno 4: Odaiba, Ginza & Roppongi',
+  '\u200B08:30 | teamLab Planets: Esperienza digitale immersiva d’arte contemporanea a Toyosu.',
+  '\u200B11:30 | Statua della Libertà di Odaiba & Rainbow Bridge: Passeggiata sulla baia di Tokyo con vista sul Rainbow Bridge.',
+  '\u200B15:00 | Ginza & Teatro Kabuki-za: Quartiere dell’eleganza e della moda con sosta fotografica davanti al celebre teatro Kabuki-za.',
+  '\u200B19:00 | Keyakizaka Dori (Roppongi Hills): Spettacolare viale alberato con illuminazioni natalizie bianche e blu con vista Tokyo Tower.',
+  '\u200B26 Nov (Gio) – Giorno 5: Tokyo Storica & Tramonto',
+  '\u200B09:00 | Palazzo Imperiale: Giardini orientali e ponte Nijubashi.',
+  '\u200B11:30 | Parco di Ueno: Passeggiata nel parco storico e stagno Shinobazu.',
+  '\u200B14:30 | Asakusa & Tempio Senso-ji: Il tempio buddista più antico di Tokyo e la via Nakamise-dori.',
+  '\u200B17:30 | Tokyo Skytree: Vista panoramica della metropoli dall’osservatorio al crepuscolo.',
+  '\u200BTAPPA 2: Monte Fuji / 5 Laghi (1 Notte)',
+  '\u200B27 Nov (Ven) – Giorno 6: Il tunnel di aceri e il Ryokan',
+  '\u200BLogistica Bagagli (Spedizione Valigie): Spedisci i bagagli grandi dall\'hotel di Tokyo direttamente a quello di Kyoto. Viaggia solo con uno zaino leggero per la notte al Fuji.',
+  '\u200B08:00 | Partenza per Lago Kawaguchiko: Bus espresso Highway Bus da Shinjuku verso Fujisan / Kawaguchiko.',
+  '\u200B11:30 | Momiji Corridor (Corridoio degli Aceri): Famosa passeggiata sotto il tunnel di foglie rosse d\'acero.',
+  '\u200B14:00 | Pagoda Chureito: Salita dei gradini per ammirare l\'iconica vista della pagoda a cinque piani con il Monte Fuji.',
+  '\u200BSe il Giorno 1 era nuvoloso: Salita alla Pagoda Chureito per recuperare la vista.',
+  '\u200BSe il Giorno 1 era limpido: Visita alternativa a Oishi Park sulla sponda nord del lago Kawaguchi.',
+  '\u200B18:30 | Cena e Onsen in Ryokan: Cena kaiseki tradizionale e bagno termale rilassante.',
+  '\u200BTAPPA 3: Kyoto (4 Notti)',
+  '\u200B28 Nov (Sab) – Giorno 7: Benvenuti a Kyoto & Gion',
+  '\u200B08:30 | Trasferimento a Kyoto: Spostamento in treno/bus dal Monte Fuji verso la capitale culturale.',
+  '\u200BBus espresso Mishima-Kawaguchiko fino alla stazione di Mishima.',
+  '\u200BDa Mishima, Shinkansen Tokaido verso la stazione di Kyoto.',
+  '\u200BCheck-in in hotel a Kyoto e deposito zaini.',
+  '\u200B15:00 | Gion Shirakawa & Via Hanamikoji: Passeggiata nel quartiere delle geishe tra case in legno machiya.',
+  '\u200B17:00 | Cerimonia del tè tradizionale MAIKOYA (sede Gion/Kiyomizu): Esperienza autentica del rito del tè matcha.',
+  '\u200BQuale sede prenotare: Preferire la sede centrale nei pressi di Gion.',
+  '\u200BCon il kimono: Presentarsi 30 minuti prima dell\'orario per la vestizione.',
+  '\u200BSenza kimono: Ingresso diretto 10 minuti prima della cerimonia.',
+  '\u200B19:30 | Pontocho & Fiume Kamogawa: Atmosfera serale nei vicoli storici con lanterne accese lungo il fiume.',
+  '\u200B29 Nov (Dom) – Giorno 8: Kyoto Classica & Light-up Eikan-do',
+  '\u200B06:30 | Tempio Kiyomizu-dera: Visita all\'alba della grande terrazza in legno prima dell\'arrivo dei gruppi.',
+  '\u200B08:30 | Sannenzaka e Ninenzaka: Discesa a piedi attraverso le suggestive vie acciottolate preservate.',
+  '\u200B10:30 | Tempio Kodai-ji e Santuario Yasaka: Giardini zen in pietra, bosco di bambù e lanterne sacre a Yasaka.',
+  '\u200B14:00 | Padiglione d\'Oro (Kinkaku-ji) & Ryoan-ji: Il tempio dorato riflesso nello specchio d\'acqua e il famoso giardino secco.',
+  '\u200B17:30 | Tempio Eikan-do (Zenrin-ji): Spettacolare illuminazione notturna (light-up) tra gli aceri secolari e lo stagno.',
+  '\u200B30 Nov (Lun) – Giorno 9: Arashiyama & Treno Panoramico Sagano',
+  '\u200B08:00 | Foresta di Bambù di Arashiyama: Passeggiata tra le canne di bambù ondeggianti al mattino presto.',
+  '\u200B09:30 | Ponte Togetsukyo & Fiume Katsura: Il ponte della luna che attraversa le acque con vista sui monti colorati.',
+  '\u200B11:00 | Tempio Tenryu-ji & Tempio Jojakko-ji: Splendido giardino circolare Sogenchi e pagoda nel bosco d\'aceri.',
+  '\u200B14:00 | Villa Okochi Sanso: Residenza storica con incantevole giardino panoramico.',
+  '\u200B15:30 | Sagano Romantic Train: Viaggio panoramico sul trenino d\'epoca lungo le gole del fiume Hozu.',
+  '\u200B01 Dic (Mar) – Giorno 10: Fushimi Inari & Filosofia',
+  '\u200B07:00 | Santuario Fushimi Inari Taisha: Passeggiata solitaria sotto le migliaia di torii vermigli lungo il monte.',
+  '\u200B11:00 | Sentiero della Filosofia & Ginkaku-ji: Passeggiata lungo il canale alberato e visita al Padiglione d\'Argento.',
+  '\u200BCosa assaggiare: Dolci yatsuhashi alla cannella e gelato al matcha lungo la via.',
+  '\u200B14:30 | Tempio Honen-in & Nanzen-ji: Tempio raccolto nella foresta e l\'imponente porta Sanmon con l\'acquedotto romano.',
+  '\u200B02 Dic (Mer) – Giorno 11: Uji, Nara & Trasferimento a Hiroshima',
+  '\u200BNota colazione: Sveglia presto e colazione veloce in hotel o konbini per ottimizzare gli spostamenti con bagaglio.',
+  '\u200B08:00 | Uji & Tempio Byodoin: La terra del matcha e la famosa Sala della Fenice raffigurata sulla moneta da 10 yen.',
+  '\u200B11:30 | Nara Park & Todai-ji: Incontro con i cervi shika in libertà e visita al Grande Buddha Daibutsu.',
+  '\u200BDa lì un bus (101, 102, 204, 205) per la stazione ferroviaria.',
+  '\u200B14:30 | Tempio Kofuku-ji & Santuario Kasuga Taisha: Pagoda a cinque piani e santuario scintoista con lanterne in bronzo.',
+  '\u200B17:30 | Shinkansen per Hiroshima: Treno ad alta velocità Shinkansen verso Hiroshima e sistemazione in hotel.',
+  '\u200BTAPPA 4: Hiroshima (2 Notti)',
+  '\u200B03 Dic (Gio) – Giorno 12: Hiroshima & Isola di Miyajima',
+  '\u200B08:30 | Parco del Memoriale della Pace & Cupola Genbaku: Luogo di memoria storica universale e museo della pace.',
+  '\u200B12:30 | Isola di Miyajima & Santuario Itsukushima: Traghetto per l\'isola sacra, grande torii galleggiante nell\'acqua e Tempio Daisho-in (chiude alle 17:00, ultimo ingresso ore 16:15).',
+  '\u200B18:30 | Rientro a Hiroshima: Cena tipica a base di Hiroshima-yaki (okonomiyaki a strati con soba noodles).',
+  '\u200BTAPPA 5: Osaka (3 Notti)',
+  '\u200B04 Dic (Ven) – Giorno 13: Castello di Himeji & Trasferimento a Osaka',
+  '\u200B08:30 | Shinkansen per Himeji: Breve viaggio in treno proiettile con sosta per visita monumentale.',
+  '\u200B09:30 | Castello di Himeji & Giardino Koko-en: Il più maestoso castello medievale originale del Giappone (l\'Airone Bianco) e splendidi nove giardini recintati.',
+  '\u200B14:00 | Shinkansen per Osaka & Check-in: Arrivo a Osaka e sistemazione in alloggio a Namba.',
+  '\u200B18:00 | Dotonbori: Il vivace cuore notturno di Osaka, con l\'insegna Glico Man e cibo di strada.',
+  '\u200B05 Dic (Sab) – Giorno 14: Universal Studios Japan',
+  '\u200B08:00 | Universal Studios Japan: Giornata intera di divertimento tra Super Nintendo World e il Wizarding World of Harry Potter.',
+  '\u200B06 Dic (Dom) – Giorno 15: Rientro in Italia',
+  '\u200B09:30 | Castello di Osaka & Parco: Vista panoramica esterna (senza entrare nel museo moderno interno, avendo già visitato l\'originale a Himeji).',
+  '\u200B12:00 | Shinsekai & Torre Tsutenkaku: Quartiere retro nostalgico anni \'50 con la caratteristica torre.',
+  '\u200BCosa mangiare: Spiedini fritti kushikatsu tipici di Shinsekai da gustare caldi.',
+  '\u200B17:30 | Volo di rientro da Osaka: Raggiungere l\'aeroporto internazionale del Kansai (KIX) per il volo di ritorno in Italia.'
+].join('\n');
+
+const zeroWidthPlan = parseNaturalLanguageItinerary(zeroWidthJapanItinerary, { referenceYear: 2026 });
+assert.equal(zeroWidthPlan.isValid, true, 'Zero-width Japan plan must be valid');
+assert.equal(zeroWidthPlan.days.length, 15, 'Must generate exactly 15 days');
+assert.equal(zeroWidthPlan.startDate, '2026-11-22', 'Start date must be 2026-11-22');
+assert.equal(zeroWidthPlan.endDate, '2026-12-06', 'End date must be 2026-12-06');
+assert.ok(zeroWidthPlan.suggestedTitle.includes('Giappone'), 'Suggested title must include Giappone');
+
+// Assert all 15 day titles start with "Giorno N:"
+for (let i = 0; i < 15; i++) {
+  const d = zeroWidthPlan.days[i];
+  assert.ok(
+    d.title.startsWith(`Giorno ${i + 1}:`),
+    `Day ${i + 1} title "${d.title}" must start with "Giorno ${i + 1}:"`
+  );
+}
+
+const allZeroWidthActivities = zeroWidthPlan.days.flatMap((d) => d.activities);
+
+// Assert no activity title contains stray "|" or broken parentheses
+for (const act of allZeroWidthActivities) {
+  assert.ok(!act.title.includes('|'), `Activity title "${act.title}" must not contain stray pipe`);
+  assert.ok(
+    !/\b(?:101|102|Uscita Est\)|Ultimo ingresso\b)/i.test(act.title),
+    `Activity title "${act.title}" must not contain broken parenthetical fragments`
+  );
+}
+
+// Day 4: Odaiba Statue of Liberty must NOT match New York (lat < 40)
+const day4Statue = zeroWidthPlan.days[3].activities.find((a) =>
+  a.title.toLowerCase().includes('statua della libert')
+);
+assert.ok(day4Statue, 'Day 4 must include Statua della Liberta');
+assert.ok(
+  typeof day4Statue.lat === 'number' && day4Statue.lat > 35 && day4Statue.lat < 36,
+  'Statua della Liberta must be in Tokyo/Odaiba (lat ~35.6), not New York (lat 40.7)'
+);
+
+// Day 15: Osaka Castle must NOT match Castello di Himeji due to negation clause
+const day15Acts = zeroWidthPlan.days[14].activities;
+assert.ok(
+  !day15Acts.some((a) => a.title.toLowerCase().includes('himeji')),
+  'Day 15 must not match Castello di Himeji from past comparison clause'
+);
+
+// Day 3: Kamakura beach backdrop must NOT match Mount Fuji in Yamanashi
+const day3Acts = zeroWidthPlan.days[2].activities;
+assert.ok(
+  !day3Acts.some((a) => a.title.toLowerCase().includes('monte fuji') || a.title.toLowerCase().includes('lago kawaguchiko')),
+  'Day 3 Kamakura must not match Mount Fuji / Kawaguchiko'
+);
+
+console.log('✓ Domain tests passed (Currency parser + Date reconciliation + Natural Itinerary Engine + Hierarchical Outlines + 20-Tour Evaluation Loop + Zero-Width Japan 15-Day Parser Suite + PDF Bookings + Collaborative 3-Way Array ID Merging + Cover Photo Metadata Merge + Trip Deletion Invariants + Move Activity Invariants + Weather Engine, Clustering & Hourly Arrival Timing + Add Day Start/End + Auth Gate & Cross-Device Cloud Parity + PDF Attachment Preservation + Checklist Category Separation & Custom Categories + LocalStorage Quota Shield + Custom Companion Display Name + Tab & Selection State Invariants + Audit Verification: Sync, Merge, Loading, Delete & Add Edge Cases + Expense Deletion & Cloud Sanitization Invariants + React 18 Reducer Idempotency & Expense Sync Parity + Consecutive Remote Expense Synchronization + Atomic Subcollection Sync & Pending-Writes State Machine + Bug Census Regression Suite BUG-01..BUG-25)');

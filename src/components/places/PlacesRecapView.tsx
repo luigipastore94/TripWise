@@ -508,13 +508,13 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
       areaOrAddress: placeArea.trim() || undefined,
       lat: typeof parsedLat === 'number' && Number.isFinite(parsedLat) ? parsedLat : undefined,
       lng: typeof parsedLng === 'number' && Number.isFinite(parsedLng) ? parsedLng : undefined,
-      googlePlaceId: placeGooglePlaceId || editingPlace?.googlePlaceId,
+      googlePlaceId: placeLat && placeLng ? placeGooglePlaceId || undefined : undefined,
       customUrl: normalizedUrl || undefined,
       notes: placeNotes.trim() || undefined,
-      photos: placePhotos.length > 0 ? placePhotos : (editingPlace?.photos ?? undefined),
-      photoUrl: placePhotos.length > 0 ? placePhotos[0] : editingPlace?.photoUrl,
-      rating: placeRating ?? editingPlace?.rating,
-      userRatingCount: placeUserRatingCount ?? editingPlace?.userRatingCount,
+      photos: placePhotos.length > 0 ? placePhotos : undefined,
+      photoUrl: placePhotos.length > 0 ? placePhotos[0] : undefined,
+      rating: placeRating,
+      userRatingCount: placeUserRatingCount,
       visited: editingPlace?.visited ?? false,
       createdAt: editingPlace?.createdAt ?? Date.now()
     };
@@ -631,6 +631,11 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
           <div
             role="group"
             aria-label="Filtra per origine del luogo"
+            onWheel={(e) => {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                e.currentTarget.scrollLeft += e.deltaY;
+              }
+            }}
             className="flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1 overflow-x-auto no-scrollbar max-w-full"
           >
             {(
@@ -1122,9 +1127,18 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
               customHeight="min(62dvh, 540px)"
               layoutKey="modal-favorite-picker"
               onPickLocationFromMap={(picked) => {
-                setPlaceArea(picked.shortName);
+                setPlaceArea(picked.displayName || picked.shortName);
                 setPlaceLat(picked.lat.toFixed(6));
                 setPlaceLng(picked.lng.toFixed(6));
+                setPlaceGooglePlaceId(picked.googlePlaceId || '');
+                if (picked.suggestedCategory) {
+                  setPlaceCategory(picked.suggestedCategory);
+                }
+                if (picked.photos && picked.photos.length > 0) {
+                  setPlacePhotos(picked.photos);
+                  setPlaceRating(picked.rating);
+                  setPlaceUserRatingCount(picked.userRatingCount);
+                }
                 if (!placeName.trim()) {
                   setPlaceName(picked.shortName.split(',')[0].trim());
                 }
@@ -1196,6 +1210,7 @@ export const PlacesRecapView: React.FC<PlacesRecapViewProps> = ({ onJumpToDay })
                       onClick={() => {
                         setPlaceLat('');
                         setPlaceLng('');
+                        setPlaceGooglePlaceId('');
                       }}
                       className="underline font-normal ml-1"
                     >

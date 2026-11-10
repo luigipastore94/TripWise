@@ -321,8 +321,8 @@ export async function fetchZoneWeather(
     }
   }
 
-  // If today and no specific time, use current real-time observations
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // If today and no specific time, use current real-time observations (in destination's local timezone)
+  const todayIso = daily?.time?.[0] || new Date().toISOString().slice(0, 10);
   if (!targetTime && targetDate === todayIso && current) {
     temperature = Math.round(current.temperature_2m);
     weatherCode = current.weather_code;

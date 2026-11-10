@@ -8,8 +8,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node tests/domain.test.mjs",
     "preview": "vite preview",
-    "cloud:setup": "node scripts/cloud-setup.mjs",
+    "cloud:provision": "node scripts/cloud-setup.mjs",
+    "cloud:setup": "node scripts/setup-cloud-deploy.mjs",
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open": "npx cap open android"
   },

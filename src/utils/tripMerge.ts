@@ -49,8 +49,8 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 export function dataEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
-  const { updatedAt: _uA, ...restA } = a as Record<string, unknown>;
-  const { updatedAt: _uB, ...restB } = b as Record<string, unknown>;
+  const { updatedAt: _uA, pdfDataUrl: _pA, ...restA } = a as Record<string, unknown>;
+  const { updatedAt: _uB, pdfDataUrl: _pB, ...restB } = b as Record<string, unknown>;
   return deepEqual(restA, restB);
 }
 
@@ -60,15 +60,29 @@ function preserveLocalBinaryAttachments<T>(winner: T, localItem?: T): T {
   }
   const locRec = localItem as Record<string, unknown>;
   const winRec = { ...winner } as Record<string, unknown>;
-  if (locRec.pdfDataUrl && !winRec.pdfDataUrl) {
-    winRec.pdfDataUrl = locRec.pdfDataUrl;
+
+  // Only preserve offloaded pdfDataUrl if the winning version has not explicitly removed the PDF (hasPdf === false)
+  if (winRec.hasPdf !== false) {
+    if (locRec.pdfDataUrl && !winRec.pdfDataUrl && (winRec.hasPdf === true || winner === localItem)) {
+      winRec.pdfDataUrl = locRec.pdfDataUrl;
+    }
+    if (winRec.hasPdf || winRec.pdfDataUrl) {
+      winRec.hasPdf = true;
+    }
+  } else {
+    delete winRec.pdfDataUrl;
   }
-  if (locRec.qrImageDataUrl && !winRec.qrImageDataUrl) {
+
+  // Only preserve local qrImageDataUrl if winner is localItem or if local QR exceeded cloud inline limit (>390KB)
+  if (
+    locRec.qrImageDataUrl &&
+    !winRec.qrImageDataUrl &&
+    (winner === localItem ||
+      (typeof locRec.qrImageDataUrl === 'string' && locRec.qrImageDataUrl.length > 390_000))
+  ) {
     winRec.qrImageDataUrl = locRec.qrImageDataUrl;
   }
-  if (locRec.hasPdf || winRec.hasPdf || locRec.pdfDataUrl || winRec.pdfDataUrl) {
-    winRec.hasPdf = true;
-  }
+
   return winRec as T;
 }
 
@@ -462,6 +476,9 @@ export function mergeTrips(
     remoteTrip.customChecklistCategories || []
   );
 
+  const stripBookingsVolatile = (bookings: Booking[]) =>
+    bookings.map(({ pdfDataUrl: _pdf, ...rest }) => rest);
+
   // Check if merged result contains changes that are NOT yet in remoteTrip
   const isIdenticalToRemote =
     deepEqual(remoteTrip.title, mergedMeta.title ?? remoteTrip.title) &&
@@ -481,7 +498,10 @@ export function mergeTrips(
     deepEqual(remoteTrip.members || [], mergedMembers) &&
     deepEqual(remoteTrip.days || [], mergedDays) &&
     deepEqual(remoteTrip.expenses || [], mergedExpenses) &&
-    deepEqual(remoteTrip.bookings || [], mergedBookings) &&
+    deepEqual(
+      stripBookingsVolatile(remoteTrip.bookings || []),
+      stripBookingsVolatile(mergedBookings)
+    ) &&
     deepEqual(remoteTrip.checklist || [], mergedChecklist) &&
     deepEqual(remoteTrip.savedPlaces || [], mergedSavedPlaces) &&
     deepEqual(remoteTrip.customChecklistCategories || [], mergedCustomCategories);

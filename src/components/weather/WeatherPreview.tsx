@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Sun,
   CloudSun,
@@ -66,6 +67,18 @@ export const WeatherPreview: React.FC<WeatherPreviewProps> = ({
   const [weather, setWeather] = useState<WeatherInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+
+  useEffect(() => {
+    if (!showDetails) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setShowDetails(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showDetails]);
 
   useEffect(() => {
     if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
@@ -187,7 +200,7 @@ export const WeatherPreview: React.FC<WeatherPreviewProps> = ({
       </button>
 
       {/* Weather Details Popover / Modal (Gestalt Visual Grouping & Miller's Law) */}
-      {showDetails && (
+      {showDetails && typeof document !== 'undefined' && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -321,7 +334,8 @@ export const WeatherPreview: React.FC<WeatherPreviewProps> = ({
                 : 'Meteo in tempo reale per la zona della tappa'}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
